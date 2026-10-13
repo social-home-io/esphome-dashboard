@@ -78,6 +78,9 @@ jobs:
   pages:
     name: Deploy installer and update manifests
     needs: [prepare, build]
+    # A pre-release must not replace the update manifest every panel polls:
+    # it gets its binaries on the release page only.
+    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
