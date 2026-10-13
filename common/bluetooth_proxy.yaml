@@ -1,0 +1,13 @@
+# Extend Home Assistant's Bluetooth range through the panel. On ESP32-P4 the
+# radio is the ESP32-C6 co-processor (esp32_hosted, Bluedroid over VHCI).
+# Only for devices with `"ble": true` in devices/manifest.json.
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+    # Bounded duty cycle so scanning leaves headroom for LVGL and HTTP.
+    interval: 320ms
+    window: 30ms
+
+bluetooth_proxy:
+  active: true

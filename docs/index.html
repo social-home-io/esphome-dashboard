@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Social Home Dashboard Installer</title>
+  <meta name="description" content="Install the Social Home wall dashboard firmware on an ESPHome touch panel from your browser.">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Social Home dashboard</h1>
+      <p class="lede">Turn a touch panel into a Social Home wall dashboard. Plug the panel into this computer with USB-C, pick it below and press <strong>Install</strong>. After flashing, the installer asks for your Wi-Fi.</p>
+    </header>
+
+    <section aria-labelledby="devices-heading">
+      <h2 id="devices-heading">Supported panels</h2>
+      <ul id="devices" class="devices">
+        <li class="device muted">Loading the device list…</li>
+      </ul>
+      <p id="unsupported" class="note" hidden>Your browser can't flash devices. Use Chrome or Edge on a desktop computer.</p>
+    </section>
+
+    <section aria-labelledby="after-heading">
+      <h2 id="after-heading">After installing</h2>
+      <ul class="steps">
+        <li>No USB cable handy? Set Wi-Fi from a phone with Improv over Bluetooth (Home Assistant finds the panel, or use <a href="https://www.improv-wifi.com/">improv-wifi.com</a>) and tap <strong>Allow</strong> on the panel.</li>
+        <li>Home Assistant discovers the panel through ESPHome. Adopting it is optional: the dashboard works without Home Assistant.</li>
+        <li>Updates arrive over the air from this site.</li>
+      </ul>
+    </section>
+
+    <footer>
+      <p>Source and license: <a href="https://github.com/social-home-io/esphome-dashboard">social-home-io/esphome-dashboard</a>. Sources are MPL-2.0; the compiled firmware links ESPHome and is distributed under GPLv3.</p>
+    </footer>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

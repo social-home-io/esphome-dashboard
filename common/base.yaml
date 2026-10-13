@@ -1,0 +1,19 @@
+# Node identity and project metadata shared by every device.
+#
+# Home Assistant splits project.name on "." into manufacturer / model, so the
+# panel shows up as social-home-io / esphome-dashboard with
+# sw_version "<firmware_version> (ESPHome <version>)".
+
+substitutions:
+  name: socialhome-dashboard
+  friendly_name: Social Home Dashboard
+  # Overridden by the release workflow with the CalVer tag.
+  firmware_version: dev
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2026.9.1
+  project:
+    name: social-home-io.esphome-dashboard
+    version: ${firmware_version}

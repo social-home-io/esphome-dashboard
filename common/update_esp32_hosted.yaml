@@ -1,0 +1,11 @@
+# Co-processor (ESP32-C6, esp32_hosted) firmware updates from ESPHome's
+# prebuilt esp-hosted firmware (Wi-Fi + Bluetooth over VHCI). Only for devices
+# that use esp32_hosted.
+
+update:
+  - platform: esp32_hosted
+    id: coprocessor_update
+    name: Co-processor firmware
+    type: http
+    source: https://esphome.github.io/esp-hosted-firmware/manifest/esp32c6.json
+    update_interval: 24h

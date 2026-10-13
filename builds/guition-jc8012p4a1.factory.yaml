@@ -1,0 +1,18 @@
+# Factory image for the Guition JC8012P4A1, flashed by the web installer.
+# Adds a unique name per panel, ESPHome dashboard adoption and the captive
+# portal fallback on top of the regular build.
+
+substitutions:
+  name: socialhome-dashboard
+  friendly_name: Social Home Dashboard
+
+esphome:
+  name_add_mac_suffix: true
+
+dashboard_import:
+  package_import_url: github://social-home-io/esphome-dashboard/devices/guition-jc8012p4a1/esphome.yaml@main
+  import_full_config: false
+
+packages:
+  build: !include guition-jc8012p4a1.yaml
+  captive_portal: !include ../common/captive_portal.yaml

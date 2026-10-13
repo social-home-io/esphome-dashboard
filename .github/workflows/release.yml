@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild and redeploy (YYYY.M.D[.N])
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Version and device matrix
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: version
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          if [[ ! "${TAG}" =~ ^[0-9]{4}\.[1-9][0-9]?\.[1-9][0-9]?(\.[0-9]+)?$ ]]; then
+            echo "::error::Tag '${TAG}' is not CalVer YYYY.M.D[.N] (no v prefix)"
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.version.outputs.tag }}
+      - id: matrix
+        run: echo "matrix=$(python3 scripts/device_matrix.py)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.slug }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - name: Load pinned ESPHome version
+        run: cat .github/esphome.env >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install ESPHome ${{ env.ESPHOME_VERSION }}
+        run: pip install "esphome==${ESPHOME_VERSION}"
+      - name: esphome compile
+        run: esphome -s firmware_version "${TAG}" compile "builds/${{ matrix.slug }}.factory.yaml"
+      - name: Collect firmware
+        run: scripts/collect_firmware.sh "${{ matrix.slug }}" dist
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${TAG}" dist/*.bin --clobber --repo "${GITHUB_REPOSITORY}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware-${{ matrix.slug }}
+          path: dist/
+          if-no-files-found: error
+
+  pages:
+    name: Deploy installer and update manifests
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: firmware-*
+          path: dist
+          merge-multiple: true
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp -r docs/. site/
+          cp devices/manifest.json site/devices.json
+          release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+          jq -c '.devices[]' devices/manifest.json | while read -r device; do
+            slug=$(jq -r .slug <<<"${device}")
+            out="site/firmware/${slug}"
+            mkdir -p "${out}"
+            cp "dist/${slug}.factory.bin" "dist/${slug}.ota.bin" "${out}/"
+            python3 scripts/web_manifest.py \
+              --slug "${slug}" \
+              --name "$(jq -r .name <<<"${device}")" \
+              --chip-family "$(jq -r .chip_family <<<"${device}")" \
+              --version "${TAG}" \
+              --dir "${out}" \
+              --release-url "${release_url}"
+          done
+          find site -type f | sort
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v5

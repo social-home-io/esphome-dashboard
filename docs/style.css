@@ -1,0 +1,44 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+:root {
+  --bg: #f5f5f4;
+  --surface: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --border: #e5e7eb;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111827;
+    --surface: #1f2937;
+    --text: #f3f4f6;
+    --muted: #9ca3af;
+    --accent: #60a5fa;
+    --border: #374151;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+h1 { font-size: 2rem; margin: 0 0 8px; }
+h2 { font-size: 1.25rem; margin: 32px 0 12px; }
+h3 { font-size: 1.05rem; margin: 0; }
+a { color: var(--accent); }
+.lede { margin: 0; color: var(--muted); }
+.muted { color: var(--muted); margin: 0; }
+.note { color: var(--muted); }
+.devices { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.device {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+}
+.steps { padding-left: 20px; }
+.steps li { margin-bottom: 8px; }
+footer { margin-top: 40px; font-size: 0.875rem; color: var(--muted); }
+esp-web-install-button { --esp-tools-button-color: var(--accent); }

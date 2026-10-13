@@ -1,0 +1,44 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "labels": [
+    "chore",
+    "dependencies"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pinned ESPHome version used by CI and releases",
+      "managerFilePatterns": [
+        "/^\\.github/esphome\\.env$/"
+      ],
+      "matchStrings": [
+        "ESPHOME_VERSION=(?<currentValue>\\S+)"
+      ],
+      "depNameTemplate": "esphome",
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "customType": "regex",
+      "description": "ESP Web Tools on the installer page",
+      "managerFilePatterns": [
+        "/^docs/.+\\.html$/"
+      ],
+      "matchStrings": [
+        "esp-web-tools@(?<currentValue>[0-9.]+)"
+      ],
+      "depNameTemplate": "esp-web-tools",
+      "datasourceTemplate": "npm"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchDepNames": [
+        "esphome"
+      ],
+      "groupName": "ESPHome"
+    }
+  ]
+}

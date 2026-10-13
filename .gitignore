@@ -1,0 +1,15 @@
+# Local tooling
+.venv/
+__pycache__/
+*.pyc
+
+# ESPHome build output and caches
+.esphome/
+**/.esphome/
+.pioenvs/
+.piolibdeps/
+secrets.yaml
+
+# CI / release staging
+dist/
+site/

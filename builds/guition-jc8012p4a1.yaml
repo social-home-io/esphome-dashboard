@@ -1,0 +1,10 @@
+# CI / OTA build for the Guition JC8012P4A1, from this checkout.
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [socialhome_display]
+
+packages:
+  device: !include ../devices/guition-jc8012p4a1/packages.yaml

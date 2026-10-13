@@ -1,0 +1,32 @@
+# Social Home dashboard on a Guition JC8012P4A1.
+#
+# This is the config Home Assistant's ESPHome dashboard adopts. Change the
+# name / friendly name if you like; everything else comes from the
+# social-home-io/esphome-dashboard repository.
+
+substitutions:
+  name: socialhome-dashboard
+  friendly_name: Social Home Dashboard
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: false
+
+external_components:
+  - source: github://social-home-io/esphome-dashboard@main
+    components: [socialhome_display]
+    refresh: 1d
+
+packages:
+  socialhome_dashboard:
+    url: https://github.com/social-home-io/esphome-dashboard
+    ref: main
+    files:
+      - devices/guition-jc8012p4a1/packages.yaml
+    refresh: 1d
+
+wifi:
+  ap: {}
+
+captive_portal:

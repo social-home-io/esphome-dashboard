@@ -1,0 +1,40 @@
+# Everything a Guition JC8012P4A1 dashboard needs, minus the node identity.
+#
+# Included by builds/guition-jc8012p4a1*.yaml (CI) and, as a remote package,
+# by devices/guition-jc8012p4a1/esphome.yaml (user-adoptable config).
+
+substitutions:
+  device_slug: guition-jc8012p4a1
+  display_model: JC8012P4A1
+  display_rotation: "90"
+  # Guition's shipping boards use pre-v3.0 ESP32-P4 silicon.
+  engineering_sample: "true"
+  screen_width: "1280"
+  screen_height: "800"
+  ui_scale: "1.0"
+  font_size_small: "20"
+  font_size_body: "28"
+  font_size_title: "48"
+
+packages:
+  base: !include ../../common/base.yaml
+  device: !include device/device.yaml
+  fonts: !include device/fonts.yaml
+  network: !include ../../common/network.yaml
+  api: !include ../../common/api.yaml
+  ota: !include ../../common/ota.yaml
+  update: !include ../../common/update.yaml
+  update_coprocessor: !include ../../common/update_esp32_hosted.yaml
+  time: !include ../../common/time.yaml
+  backlight: !include ../../common/backlight.yaml
+  improv: !include ../../common/improv.yaml
+  bluetooth_proxy: !include ../../common/bluetooth_proxy.yaml
+
+socialhome_display:
+  id: socialhome
+  lvgl_id: lvgl_comp
+  screen_width: ${screen_width}
+  screen_height: ${screen_height}
+  title_font: font_title
+  body_font: font_body
+  small_font: font_small

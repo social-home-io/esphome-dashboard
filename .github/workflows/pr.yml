@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and script tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install yamllint
+        run: pip install yamllint
+      - name: yamllint
+        run: yamllint -s .
+      - name: Script tests
+        run: python -m unittest discover -s tests -t . -v
+
+  matrix:
+    name: Device matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: matrix
+        run: echo "matrix=$(python3 scripts/device_matrix.py)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.slug }}
+    needs: [lint, matrix]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Load pinned ESPHome version
+        run: cat .github/esphome.env >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install ESPHome ${{ env.ESPHOME_VERSION }}
+        run: pip install "esphome==${ESPHOME_VERSION}"
+      - name: Cache ESP-IDF toolchain and build
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/esphome
+            ~/.platformio
+            builds/.esphome
+          key: >-
+            esphome-${{ env.ESPHOME_VERSION }}-${{ matrix.slug }}-${{
+            hashFiles('builds/*.yaml', 'devices/**', 'common/**', 'components/**') }}
+          restore-keys: |
+            esphome-${{ env.ESPHOME_VERSION }}-${{ matrix.slug }}-
+      - name: Firmware version
+        run: echo "FIRMWARE_VERSION=dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - name: esphome config
+        run: >-
+          esphome -s firmware_version "${FIRMWARE_VERSION}"
+          config "builds/${{ matrix.slug }}.factory.yaml" > /dev/null
+      - name: esphome compile
+        run: esphome -s firmware_version "${FIRMWARE_VERSION}" compile "builds/${{ matrix.slug }}.factory.yaml"
+      - name: Collect firmware
+        run: scripts/collect_firmware.sh "${{ matrix.slug }}" dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware-${{ matrix.slug }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
