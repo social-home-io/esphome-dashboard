@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import device_matrix  # noqa: E402
+import display_api_contract  # noqa: E402
 import web_manifest  # noqa: E402
 
 
@@ -87,3 +88,39 @@ class WebManifestTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DisplayApiContractTest(unittest.TestCase):
+    def test_source_pins_a_commit(self) -> None:
+        source = display_api_contract.read_source()
+        self.assertEqual(source["SOCIALHOME_REPO"], "social-home-io/socialhome")
+        self.assertRegex(source["SOCIALHOME_REF"], r"^[0-9a-f]{40}$")
+
+    def test_fixtures_are_pinned(self) -> None:
+        files = display_api_contract.local_files()
+        self.assertIn("home.schema.json", files)
+        self.assertIn("fixtures/home.json", files)
+
+    def test_compare_reports_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fixtures").mkdir()
+            (root / "a.json").write_bytes(b"{}")
+            (root / "fixtures" / "b.json").write_bytes(b"[1]")
+            (root / "extra.json").write_bytes(b"{}")
+            remote = {"a.json": b"{}", "fixtures/b.json": b"[2]", "c.json": b"{}"}
+            problems = display_api_contract.compare(remote, root)
+        self.assertEqual(
+            problems,
+            [
+                "missing locally: c.json",
+                "differs: fixtures/b.json",
+                "not in the pinned ref: extra.json",
+            ],
+        )
+
+    def test_compare_clean(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "a.json").write_bytes(b"{}")
+            self.assertEqual(display_api_contract.compare({"a.json": b"{}"}, root), [])

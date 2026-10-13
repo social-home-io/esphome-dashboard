@@ -22,7 +22,9 @@ at least 1280×800 that ESPHome supports.
    the touchscreen `main_touch` and LVGL the id `lvgl_comp` with one page
    `main_page`. Set LVGL `rotation` so the UI is landscape.
 2. **Fonts:** `devices/<slug>/device/fonts.yaml` defines `font_small`,
-   `font_body` and `font_title` from the `font_size_*` substitutions.
+   `font_label`, `font_body`, `font_body_bold`, `font_large`, `font_title`,
+   `font_display`, `font_clock` and `font_night` from the `font_size_*`
+   substitutions (the clock fonts need digits and `:` only).
 3. **Packages:** `devices/<slug>/packages.yaml` sets the substitutions
    (`device_slug`, `screen_width`, `screen_height`, `ui_scale`, font sizes)
    and lists the `common/` packages. Leave out `bluetooth_proxy.yaml` and the

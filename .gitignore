@@ -13,3 +13,6 @@ secrets.yaml
 # CI / release staging
 dist/
 site/
+
+# Host test build
+build/

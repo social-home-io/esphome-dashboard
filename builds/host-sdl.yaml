@@ -1,0 +1,98 @@
+# Host build: the dashboard in a headless SDL "panel" at 1280x800, for
+# screenshots without hardware (see tests/README.md). Not a release target.
+#
+#   .venv/bin/esphome compile builds/host-sdl.yaml
+#   .venv/bin/esphome run builds/host-sdl.yaml --no-logs   # or run the binary
+#
+# A screenshot script drives it through a command file (host/host_driver.h).
+
+substitutions:
+  name: socialhome-host
+  device_slug: host-sdl
+  screen_width: "1280"
+  screen_height: "800"
+  ui_scale: "1.0"
+  font_size_small: "16"
+  font_size_body: "22"
+  font_size_large: "28"
+  font_size_title: "32"
+  font_size_display: "48"
+  font_size_clock: "104"
+  font_size_night: "160"
+  # Social Home to talk to; empty shows the address screen first.
+  server_url: ""
+  driver_file: /tmp/socialhome-host.cmd
+
+esphome:
+  name: ${name}
+  friendly_name: Social Home host panel
+  includes:
+    - host/host_driver.h
+  project:
+    name: social-home-io.esphome-dashboard
+    version: host
+
+host:
+
+logger:
+  level: DEBUG
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [socialhome_display]
+
+packages:
+  fonts: !include ../devices/guition-jc8012p4a1/device/fonts.yaml
+
+display:
+  - platform: sdl
+    id: main_display
+    headless: true
+    dimensions:
+      width: ${screen_width}
+      height: ${screen_height}
+    auto_clear_enabled: false
+    update_interval: never
+
+lvgl:
+  id: lvgl_comp
+  displays:
+    - main_display
+  buffer_size: 100%
+  pages:
+    - id: main_page
+
+time:
+  - platform: host
+    id: host_time
+
+http_request:
+  timeout: 10s
+
+socialhome_display:
+  id: socialhome
+  lvgl_id: lvgl_comp
+  screen_width: ${screen_width}
+  screen_height: ${screen_height}
+  ui_scale: ${ui_scale}
+  model: ${device_slug}
+  server_url: ${server_url}
+  poll_interval: 10s
+  time_id: host_time
+  fonts:
+    small: font_small
+    label: font_label
+    body: font_body
+    body_bold: font_body_bold
+    large: font_large
+    title: font_title
+    display: font_display
+    clock: font_clock
+    night: font_night
+
+interval:
+  - interval: 250ms
+    then:
+      - lambda: host_driver::tick("${driver_file}", id(main_display));

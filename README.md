@@ -4,10 +4,15 @@ Firmware that turns an ESPHome touch panel into a [Social Home](https://github.c
 wall dashboard: the same household view as the browser dashboard, on a panel
 on the wall.
 
-> **Status: bootstrap.** The firmware boots, joins Wi-Fi through Improv, works
-> as a Home Assistant Bluetooth proxy and updates itself over the air. The
-> dashboard screens follow once the Social Home display API ships; until then
-> the panel shows "Not connected yet" and its firmware version.
+> **Status: beta.** The panel pairs with a Social Home household and shows the
+> household dashboard: Overview, Messages, Notes, Map ("Who's where"), each
+> person's page and the picture view for children, the night screen and the
+> privacy lock. It joins Wi-Fi through Improv, works as a Home Assistant
+> Bluetooth proxy and updates itself over the air. Not yet: the map picture,
+> unlocking with the PIN on the panel and "Got it" reaching the server (each
+> needs a Social Home update), and finding Social Home on the network.
+
+![The panel's Overview](docs/screenshots/panel-overview.png)
 
 ## Supported panels
 
@@ -31,6 +36,19 @@ Other ways to set Wi-Fi:
   you to tap **Allow** before it accepts credentials.
 - **Captive portal (fallback):** without Wi-Fi the panel opens a
   `socialhome-dashboard-xxxxxx` access point after about a minute.
+
+### Connect to Social Home
+
+1. Once on Wi-Fi the panel asks for your Social Home's address. Type its IP
+   or host name; the dashboard port 8100 is added for you.
+2. The panel shows a six-character code. In Social Home open
+   **Admin › Dashboard › Wall panels › Add** and enter it.
+3. The panel shows the dashboard. It polls every 30 seconds (and only
+   downloads what changed).
+
+Hold the clock for five seconds to open the panel's settings: the server, the
+panel id, the firmware, the licences, and **Forget server** to start over.
+Removing the panel in Social Home sends it back to the pairing code.
 
 ### Home Assistant
 
@@ -62,8 +80,31 @@ components/socialhome_display/ the dashboard (ESPHome external component)
 builds/<slug>[.factory].yaml   CI and release entry points
 docs/                          GitHub Pages web installer
 scripts/                       CI helpers (device matrix, update manifest)
-tests/                         helper tests; host C++ tests come with the app
+tests/                         script tests, host C++ tests (tests/cpp) and the
+                               pinned display API contract (tests/fixtures)
+builds/host-sdl.yaml           the app in a headless SDL window, for screenshots
 ```
+
+## The app
+
+`components/socialhome_display` is plain C++ on ESPHome's LVGL:
+
+- `parser.*` / `model.h`: the Social Home display API v1 (`/api/display/v1/`)
+  parsed with ArduinoJson into structs. Unknown fields are ignored; an
+  `api_version` other than 1 shows "This panel needs an update".
+- `net.*`: HTTP on a worker thread (`esp_http_client` on the panel,
+  cpp-httplib on the host build) with ETag revalidation; avatars and emoji are
+  decoded (pngle) into ARGB8888 off the main loop.
+- `images.*`: a small PSRAM LRU cache of those pictures.
+- `socialhome_display.cpp`: setup → pairing → polling, every status code the
+  API documents (401 pair again, 404/409 back to Overview, 423 lock screen,
+  429 Retry-After), clock, idle return, night dimming, screen-off timeout.
+- `ui_*.cpp`: the screens, laid out from the 1280×800 browser dashboard and
+  scaled from `screen_width` / `screen_height` / `ui_scale`.
+
+Every string a person reads comes from the server in the household's language;
+the panel's own English is only for the setup screens. Emoji are pictures
+(Twemoji, CC-BY 4.0) from the server, as the fonts carry none.
 
 ## Development
 
@@ -74,6 +115,17 @@ python3 -m venv .venv
 .venv/bin/esphome compile builds/guition-jc8012p4a1.factory.yaml
 .venv/bin/esphome run builds/guition-jc8012p4a1.factory.yaml   # flash over USB
 ```
+
+Host tests (parser against the pinned fixtures, layout maths):
+
+```sh
+cmake -S tests/cpp -B build/tests && cmake --build build/tests && ctest --test-dir build/tests
+```
+
+Screenshots without hardware (needs `libsdl2-dev` and `libssl-dev`): build
+`builds/host-sdl.yaml`, run the binary, and drive it through its command file
+(see `builds/host/host_driver.h`). It writes BMPs to
+`builds/.esphome/snapshots/socialhome-host/`.
 
 CI compiles every device on each pull request and uploads the factory and OTA
 images as build artifacts, so a PR build can be flashed for testing. See

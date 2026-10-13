@@ -4,6 +4,7 @@ ignore: |
   .venv/
   .esphome/
   **/.esphome/
+  build/
 
 rules:
   line-length:
