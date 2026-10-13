@@ -1,50 +1,256 @@
 // SPDX-License-Identifier: MPL-2.0
 #pragma once
 
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <set>
 #include <string>
+#include <vector>
 
 #include "esphome/core/component.h"
+#include "esphome/core/defines.h"
+#include "esphome/core/preferences.h"
 #include "esphome/components/font/font.h"
 #include "esphome/components/lvgl/lvgl_esphome.h"
+#ifdef USE_LIGHT
+#include "esphome/components/light/light_state.h"
+#endif
+#ifdef USE_TIME
+#include "esphome/components/time/real_time_clock.h"
+#endif
+
+#include "images.h"
+#include "model.h"
+#include "net.h"
+#include "util.h"
 
 namespace esphome::socialhome_display {
 
-/// Social Home wall dashboard.
-///
-/// Bootstrap stage: renders a boot screen with the product name, a
-/// "not connected yet" status and the firmware version. Polling the Social
-/// Home display API and the dashboard screens are added later.
+/// The fonts the browser dashboard's sizes map onto (see device fonts.yaml).
+enum class FontRole : uint8_t { SMALL, LABEL, BODY, BODY_BOLD, LARGE, TITLE, DISPLAY, CLOCK, NIGHT, COUNT };
+
+/// What the panel is doing.
+enum class Mode : uint8_t {
+  BOOT,
+  NO_WIFI,        ///< waiting for Wi-Fi (Improv)
+  NO_SERVER,      ///< asking for the Social Home address
+  PAIRING,        ///< showing a pairing code
+  RUNNING,        ///< the household dashboard
+  LOCKED,         ///< privacy-locked (423)
+  UPDATE_NEEDED,  ///< the server speaks a newer API
+};
+
+/// One stored string (NVS on ESP32): survives reboots and firmware updates.
+/// Kept under 256 bytes per preference, the limit some backends have.
+struct StoredText {
+  char value[160];
+};
+
+/// Social Home wall dashboard: pairs with a Social Home household, polls the
+/// display API (/api/display/v1/) and draws the boards with LVGL.
 class SocialHomeDisplay : public Component {
  public:
   void set_lvgl(lvgl::LvglComponent *lvgl) { this->lvgl_ = lvgl; }
-  void set_server_url(const std::string &url) { this->server_url_ = url; }
+  void set_server_url(const std::string &url) { this->default_server_ = url; }
   void set_poll_interval(uint32_t interval_ms) { this->poll_interval_ms_ = interval_ms; }
   void set_screen_size(int width, int height) {
     this->screen_width_ = width;
     this->screen_height_ = height;
   }
-  void set_title_font(font::Font *font) { this->title_font_ = font; }
-  void set_body_font(font::Font *font) { this->body_font_ = font; }
-  void set_small_font(font::Font *font) { this->small_font_ = font; }
+  void set_ui_scale(float scale) { this->ui_scale_ = scale; }
+  void set_font(FontRole role, font::Font *font) { this->fonts_[static_cast<size_t>(role)] = font; }
+  void set_model(const std::string &model) { this->model_ = model; }
+  void set_screen_off_minutes(uint32_t minutes) { this->screen_off_ms_ = minutes * 60000; }
+  void set_night_brightness(float brightness) { this->night_brightness_ = brightness; }
+#ifdef USE_LIGHT
+  void set_backlight(light::LightState *light) { this->backlight_ = light; }
+#endif
+#ifdef USE_TIME
+  void set_time(time::RealTimeClock *clock) { this->time_ = clock; }
+#endif
 
   void setup() override;
+  void loop() override;
   void dump_config() override;
   // After LVGL (setup_priority::PROCESSOR) has created its display.
   float get_setup_priority() const override { return setup_priority::LATE; }
 
- protected:
-  void build_boot_screen_();
-  static void apply_font_(lv_obj_t *obj, font::Font *font);
+  /// Forget the server and token (settings screen, or an automation).
+  void forget_server();
+  Mode get_mode() const { return this->mode_; }
+  /// The board path shown now ("/api/display/v1/home", …).
+  const std::string &get_path() const { return this->current_path_; }
 
+ protected:
+  // ---- state machine (socialhome_display.cpp)
+  void set_mode_(Mode mode);
+  void load_state_();
+  void save_state_();
+  bool network_up_() const;
+  HttpRequest request_(const std::string &path, bool auth = true) const;
+  void start_pairing_();
+  void handle_api_(HttpResponse &response);
+  void handle_pairing_(HttpResponse &response);
+  void handle_board_(HttpResponse &response);
+  void handle_theme_(HttpResponse &response);
+  void request_board_();
+  void request_theme_();
+  void navigate_(const std::string &path);
+  void tick_clock_();
+  void tick_idle_();
+  void apply_backlight_();
+  void render_();
+  std::string clock_text_() const;
+
+  // ---- widgets (ui_common.cpp)
+  const lv_font_t *font_(FontRole role) const;
+  const Palette &palette_() const;
+  lv_obj_t *box_(lv_obj_t *parent);
+  lv_obj_t *column_(lv_obj_t *parent, int gap);
+  lv_obj_t *row_(lv_obj_t *parent, int gap);
+  lv_obj_t *card_(lv_obj_t *parent);
+  lv_obj_t *text_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color);
+  lv_obj_t *wrap_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color);
+  lv_obj_t *rich_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color);
+  lv_obj_t *caps_(lv_obj_t *parent, const std::string &text, uint32_t color);
+  lv_obj_t *emoji_(lv_obj_t *parent, const Emoji &emoji, int size);
+  lv_obj_t *avatar_(lv_obj_t *parent, const std::string &person_id, int size);
+  lv_obj_t *avatar_of_(lv_obj_t *parent, const std::string &initials, const std::string &avatar, Color color,
+                       Color ink, int size);
+  lv_obj_t *pill_(lv_obj_t *parent, const std::string &text, uint32_t bg, uint32_t fg, FontRole font);
+  lv_obj_t *button_(lv_obj_t *parent, const std::string &text, bool primary, lv_event_cb_t cb, void *user_data);
+  lv_obj_t *check_mark_(lv_obj_t *parent, int size, uint32_t color, int width);
+  lv_obj_t *poly_(lv_obj_t *parent, std::initializer_list<lv_point_precise_t> points, int width, uint32_t color);
+  lv_obj_t *clock_label_(lv_obj_t *parent, FontRole font, uint32_t color);
+  void long_press_settings_(lv_obj_t *obj);
+  void people_row_(lv_obj_t *parent, const std::vector<std::string> &people, int size);
+  lv_obj_t *section_card_(lv_obj_t *parent, const std::string &label);
+  lv_obj_t *agenda_row_(lv_obj_t *parent, const AgendaRow &row, bool show_people);
+  lv_obj_t *chore_row_(lv_obj_t *parent, const Chore &chore, bool show_people);
+  lv_obj_t *message_row_(lv_obj_t *parent, const Message &message, bool show_time, FontRole font);
+
+  // ---- screens
+  void build_frame_(lv_obj_t *screen);            // ui_common.cpp: rail + scrolling main column
+  void build_rail_(lv_obj_t *parent);
+  void build_tabs_(lv_obj_t *parent);
+  void build_alerts_(lv_obj_t *parent, const std::vector<Mention> &alerts);
+  void build_offline_(lv_obj_t *parent);
+  void build_overview_(lv_obj_t *parent);         // ui_overview.cpp
+  void build_timeline_(lv_obj_t *parent, const Timeline &line);
+  void build_messages_tab_(lv_obj_t *parent);     // ui_tabs.cpp
+  void build_notes_tab_(lv_obj_t *parent);
+  void build_map_tab_(lv_obj_t *parent);
+  void build_person_(lv_obj_t *parent);           // ui_person.cpp
+  void build_reader_(lv_obj_t *parent);
+  void build_picture_(lv_obj_t *parent);
+  void build_analog_clock_(lv_obj_t *parent, const AnalogClock &clock, int size);
+  lv_obj_t *build_tile_(lv_obj_t *parent, const Tile &tile, int size);
+  void build_night_(lv_obj_t *screen);            // ui_setup.cpp
+  void build_lock_(lv_obj_t *screen);
+  void build_wifi_(lv_obj_t *screen);
+  void build_server_(lv_obj_t *screen);
+  void build_pairing_(lv_obj_t *screen);
+  void build_update_(lv_obj_t *screen);
+  lv_obj_t *setup_card_(lv_obj_t *screen, const std::string &title, const std::string &text);
+  void open_settings_();
+  void close_settings_();
+
+  // ---- event callbacks
+  static void on_navigate_(lv_event_t *event);
+  static void on_ack_(lv_event_t *event);
+  static void on_wake_(lv_event_t *event);
+  static void on_night_tap_(lv_event_t *event);
+  static void on_server_ready_(lv_event_t *event);
+  static void on_change_server_(lv_event_t *event);
+  static void on_retry_(lv_event_t *event);
+  static void on_pin_key_(lv_event_t *event);
+  static void on_settings_press_(lv_event_t *event);
+  static void on_settings_close_(lv_event_t *event);
+  static void on_forget_(lv_event_t *event);
+  static void on_forget_confirm_(lv_event_t *event);
+
+  /// The server's string for `key`, else the panel's built-in English.
+  const std::string &str_(const char *key) const;
+  /// A string an LVGL callback can point at until the next rebuild.
+  std::string *payload_(const std::string &value);
+
+  // config
   lvgl::LvglComponent *lvgl_{nullptr};
-  std::string server_url_;
+  std::string default_server_;
   uint32_t poll_interval_ms_{30000};
-  int screen_width_{0};
-  int screen_height_{0};
-  font::Font *title_font_{nullptr};
-  font::Font *body_font_{nullptr};
-  font::Font *small_font_{nullptr};
-  lv_obj_t *status_label_{nullptr};
+  int screen_width_{1280};
+  int screen_height_{800};
+  float ui_scale_{1.0f};
+  font::Font *fonts_[static_cast<size_t>(FontRole::COUNT)]{};
+  std::string model_;
+  uint32_t screen_off_ms_{10 * 60000};
+  float night_brightness_{0.15f};
+#ifdef USE_LIGHT
+  light::LightState *backlight_{nullptr};
+#endif
+#ifdef USE_TIME
+  time::RealTimeClock *time_{nullptr};
+#endif
+
+  // persisted
+  ESPPreferenceObject pref_server_;
+  ESPPreferenceObject pref_token_;
+  ESPPreferenceObject pref_display_;
+  std::string server_;
+  std::string token_;
+  std::string display_id_;
+
+  // runtime
+  Metrics m_;
+  Mode mode_{Mode::BOOT};
+  bool dirty_{true};
+  bool clear_images_{false};
+  uint32_t mode_since_{0};
+  HttpWorker api_{"sh_api", 4};
+  ImageCache images_;
+  uint32_t next_id_{1};
+  uint32_t board_request_{0};
+  uint32_t theme_request_{0};
+  uint32_t pair_request_{0};
+  uint32_t next_poll_{0};
+  uint32_t next_theme_{0};
+  uint32_t next_pair_poll_{0};
+  uint32_t pair_expires_{0};
+  std::string current_path_{"/api/display/v1/home"};
+  std::string requested_path_;
+  std::map<std::string, std::string> etags_;
+  std::unique_ptr<Board> board_;
+  std::string board_path_;
+  std::string theme_etag_;
+  Theme theme_;
+  LockScreen lock_;
+  PairStart pairing_;
+  std::string pair_note_;
+  std::string error_;
+  bool offline_{false};
+  std::string offline_since_;
+  std::set<std::string> dismissed_;
+  bool night_peek_{false};
+  bool screen_off_{false};
+  float last_brightness_{-1.0f};
+  std::string last_minute_;
+  std::vector<lv_obj_t *> clock_labels_;
+  lv_obj_t *main_scroll_{nullptr};
+  int32_t keep_scroll_{0};
+  std::string built_path_;
+  lv_obj_t *settings_{nullptr};
+  lv_obj_t *confirm_{nullptr};
+  lv_obj_t *wake_layer_{nullptr};
+  lv_obj_t *server_input_{nullptr};
+  lv_font_t keyboard_font_{};
+  std::string pin_;
+  lv_obj_t *pin_dots_{nullptr};
+  lv_obj_t *pin_note_{nullptr};
+  bool pin_open_{false};
+  uint32_t press_started_{0};
+  bool press_fired_{false};
+  std::vector<std::unique_ptr<std::string>> payloads_;
 };
 
 }  // namespace esphome::socialhome_display

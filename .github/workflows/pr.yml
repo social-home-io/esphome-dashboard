@@ -29,6 +29,47 @@ jobs:
       - name: Script tests
         run: python -m unittest discover -s tests -t . -v
 
+  host-tests:
+    name: Host C++ tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Display API contract matches the pinned Social Home commit
+        run: python3 scripts/display_api_contract.py
+      - name: Build
+        run: cmake -S tests/cpp -B build/tests && cmake --build build/tests -j "$(nproc)"
+      - name: Test
+        run: ctest --test-dir build/tests --output-on-failure
+
+  host-sdl:
+    name: Build host SDL panel (screenshots)
+    needs: [lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Load pinned ESPHome version
+        run: grep -E '^[A-Z_]+=' .github/esphome.env >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: SDL2 and OpenSSL headers
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libssl-dev
+      - name: Install ESPHome ${{ env.ESPHOME_VERSION }}
+        run: pip install "esphome==${ESPHOME_VERSION}"
+      - name: Cache build
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.platformio
+            builds/.esphome
+          key: >-
+            host-sdl-${{ env.ESPHOME_VERSION }}-${{
+            hashFiles('builds/host-sdl.yaml', 'builds/host/**', 'devices/**', 'components/**') }}
+          restore-keys: |
+            host-sdl-${{ env.ESPHOME_VERSION }}-
+      - name: esphome compile
+        run: esphome compile builds/host-sdl.yaml
+
   matrix:
     name: Device matrix
     runs-on: ubuntu-latest

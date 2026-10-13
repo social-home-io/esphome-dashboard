@@ -1,33 +1,56 @@
 # Fonts for the Guition JC8012P4A1 (1280x800).
 #
-# Roboto matches the browser dashboard's font stack (system-ui, ..., Roboto).
-# Sizes come from packages.yaml substitutions so a larger panel can scale them.
+# Roboto (Apache 2.0) stands in for the browser dashboard's system-ui stack
+# (system-ui, ..., Roboto). GF_Latin_Core covers the dashboard languages
+# (en, de, es, fr, nl) and its punctuation (› … – — · •). Sizes come from
+# packages.yaml substitutions, matching dashboard.css at 1280x800, so a larger
+# panel scales them with the layout. The two clock fonts carry digits only.
 
 font:
   - id: font_small
     file: "gfonts://Roboto"
     size: ${font_size_small}
-    glyphsets:
-      - GF_Latin_Core
+    glyphsets: [GF_Latin_Core]
     # Roboto has no standalone combining accents; precomposed letters exist.
+    ignore_missing_glyphs: true
+  - id: font_label
+    file: {type: gfonts, family: Roboto, weight: bold}
+    size: ${font_size_small}
+    glyphsets: [GF_Latin_Core]
     ignore_missing_glyphs: true
   - id: font_body
     file: "gfonts://Roboto"
     size: ${font_size_body}
-    glyphsets:
-      - GF_Latin_Core
-    # Roboto has no standalone combining accents; precomposed letters exist.
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - id: font_body_bold
+    file: {type: gfonts, family: Roboto, weight: bold}
+    size: ${font_size_body}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - id: font_large
+    file: "gfonts://Roboto"
+    size: ${font_size_large}
+    glyphsets: [GF_Latin_Core]
     ignore_missing_glyphs: true
   - id: font_title
-    file:
-      type: gfonts
-      family: Roboto
-      weight: bold
+    file: {type: gfonts, family: Roboto, weight: bold}
     size: ${font_size_title}
-    glyphsets:
-      - GF_Latin_Core
-    # Roboto has no standalone combining accents; precomposed letters exist.
+    glyphsets: [GF_Latin_Core]
     ignore_missing_glyphs: true
+  - id: font_display
+    file: {type: gfonts, family: Roboto, weight: bold}
+    size: ${font_size_display}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - id: font_clock
+    file: "gfonts://Roboto"
+    size: ${font_size_clock}
+    glyphs: "0123456789:. APM"
+  - id: font_night
+    file: {type: gfonts, family: Roboto, weight: 300}
+    size: ${font_size_night}
+    glyphs: "0123456789:. APM"
 
 lvgl:
   default_font: font_body
