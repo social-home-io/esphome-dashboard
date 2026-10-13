@@ -49,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Load pinned ESPHome version
-        run: cat .github/esphome.env >> "$GITHUB_ENV"
+        run: grep -E '^[A-Z_]+=' .github/esphome.env >> "$GITHUB_ENV"
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
