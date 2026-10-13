@@ -1,0 +1,6 @@
+# Wall clock. SNTP works without Home Assistant; the time zone is set by the
+# Social Home server later.
+
+time:
+  - platform: sntp
+    id: sntp_time

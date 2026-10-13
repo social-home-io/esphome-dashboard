@@ -1,0 +1,10 @@
+# Native Home Assistant API. Optional: the dashboard works without Home
+# Assistant, so the API never reboots the panel when no client connects.
+# The encryption key is provisioned by Home Assistant on adoption.
+
+api:
+  reboot_timeout: 0s
+  encryption: {}
+  # actions:
+  #   connect_social_home (server URL + one-time claim) lands with the
+  #   Social Home display API.

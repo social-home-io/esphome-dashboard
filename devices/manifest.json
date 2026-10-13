@@ -1,0 +1,17 @@
+{
+  "devices": [
+    {
+      "slug": "guition-jc8012p4a1",
+      "name": "Guition JC8012P4A1 (10.1\")",
+      "chip": "ESP32-P4",
+      "chip_family": "ESP32-P4",
+      "coprocessor": "ESP32-C6",
+      "width": 1280,
+      "height": 800,
+      "ble": true,
+      "models": ["JC8012P4A1", "JC8012P4A1-V2"],
+      "revisions": ["engineering sample (pre-v3.0 silicon)"],
+      "status": "bootstrap"
+    }
+  ]
+}

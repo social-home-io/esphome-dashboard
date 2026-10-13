@@ -1,0 +1,22 @@
+# Release notes grouped by PR label (same buckets as Social Home core).
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+      - dependencies
+    authors:
+      - dependabot
+      - renovate
+  categories:
+    - title: Breaking changes
+      labels: [breaking]
+    - title: Security
+      labels: [security]
+    - title: Features
+      labels: [feat]
+    - title: Fixes
+      labels: [fix]
+    - title: Docs
+      labels: [docs]
+    - title: Other changes
+      labels: ["*"]

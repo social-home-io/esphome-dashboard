@@ -1,0 +1,74 @@
+# Wi-Fi provisioning through Improv:
+#  - improv_serial on the USB-C UART (ESP Web Tools asks for Wi-Fi right after
+#    flashing),
+#  - esp32_improv over BLE (Home Assistant's Improv discovery or
+#    improv-wifi.com), confirmed by tapping a button on the panel.
+
+improv_serial:
+
+binary_sensor:
+  - platform: template
+    id: improv_authorizer
+    internal: true
+
+esp32_improv:
+  authorizer: improv_authorizer
+  authorized_duration: 1min
+  on_state:
+    then:
+      - if:
+          condition:
+            lambda: return state == improv::STATE_AWAITING_AUTHORIZATION;
+          then:
+            - lvgl.widget.show: improv_authorize_panel
+          else:
+            - lvgl.widget.hide: improv_authorize_panel
+
+lvgl:
+  top_layer:
+    widgets:
+      - obj:
+          id: improv_authorize_panel
+          hidden: true
+          align: CENTER
+          width: 640
+          height: 320
+          radius: 24
+          bg_color: 0xFFFFFF
+          border_width: 0
+          shadow_width: 40
+          shadow_opa: 30%
+          pad_all: 32
+          layout:
+            type: FLEX
+            flex_flow: COLUMN
+            flex_align_main: SPACE_BETWEEN
+            flex_align_cross: CENTER
+          widgets:
+            - label:
+                text: "A phone wants to set up Wi-Fi"
+                text_font: font_title
+                text_color: 0x1F2937
+                text_align: CENTER
+                width: 100%
+                long_mode: WRAP
+            - button:
+                id: improv_authorize_button
+                width: 360
+                height: 96
+                radius: 48
+                bg_color: 0x2563EB
+                on_press:
+                  - binary_sensor.template.publish:
+                      id: improv_authorizer
+                      state: true
+                on_release:
+                  - binary_sensor.template.publish:
+                      id: improv_authorizer
+                      state: false
+                widgets:
+                  - label:
+                      text: "Allow"
+                      text_font: font_body
+                      text_color: 0xFFFFFF
+                      align: CENTER

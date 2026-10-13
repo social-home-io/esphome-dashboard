@@ -1,0 +1,8 @@
+# Wi-Fi without baked-in credentials: they arrive through Improv (serial during
+# web install, or BLE) or, on factory builds, the captive portal fallback.
+
+wifi:
+  power_save_mode: none
+
+mdns:
+  disabled: false

@@ -1,0 +1,10 @@
+# Firmware updates published on GitHub Pages by the release workflow.
+# The manifest is in ESP Web Tools format; its ota.path is served from Pages
+# (not release asset URLs, which redirect).
+
+update:
+  - platform: http_request
+    id: firmware_update
+    name: Firmware
+    source: https://social-home-io.github.io/esphome-dashboard/firmware/${device_slug}/manifest.json
+    update_interval: 6h

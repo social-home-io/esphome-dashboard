@@ -1,0 +1,33 @@
+# Fonts for the Guition JC8012P4A1 (1280x800).
+#
+# Roboto matches the browser dashboard's font stack (system-ui, ..., Roboto).
+# Sizes come from packages.yaml substitutions so a larger panel can scale them.
+
+font:
+  - id: font_small
+    file: "gfonts://Roboto"
+    size: ${font_size_small}
+    glyphsets:
+      - GF_Latin_Core
+    # Roboto has no standalone combining accents; precomposed letters exist.
+    ignore_missing_glyphs: true
+  - id: font_body
+    file: "gfonts://Roboto"
+    size: ${font_size_body}
+    glyphsets:
+      - GF_Latin_Core
+    # Roboto has no standalone combining accents; precomposed letters exist.
+    ignore_missing_glyphs: true
+  - id: font_title
+    file:
+      type: gfonts
+      family: Roboto
+      weight: bold
+    size: ${font_size_title}
+    glyphsets:
+      - GF_Latin_Core
+    # Roboto has no standalone combining accents; precomposed letters exist.
+    ignore_missing_glyphs: true
+
+lvgl:
+  default_font: font_body

@@ -1,0 +1,7 @@
+# Fallback provisioning only: if Improv is not an option, the panel opens a
+# "<name>" access point with a captive portal after a minute without Wi-Fi.
+
+wifi:
+  ap: {}
+
+captive_portal:
