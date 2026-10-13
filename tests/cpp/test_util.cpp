@@ -24,6 +24,55 @@ TEST(server_url_rejects) {
   CHECK_EQ(normalize_server_url(":8100"), std::string(""));
 }
 
+TEST(server_url_from_home_assistant) {
+  // The connect action's url goes through the same normalisation as a typed
+  // address.
+  CHECK_EQ(normalize_server_url("http://192.168.1.20:8100"), std::string("http://192.168.1.20:8100"));
+  CHECK_EQ(normalize_server_url("http://192.168.1.20:8100/"), std::string("http://192.168.1.20:8100"));
+  CHECK_EQ(normalize_server_url("http://homeassistant.local"), std::string("http://homeassistant.local:8100"));
+  CHECK_EQ(normalize_server_url("https://sh.example.org:8443/api/display/v1"),
+           std::string("https://sh.example.org:8443"));
+  CHECK_EQ(normalize_server_url("socialhome.local"), std::string("http://socialhome.local:8100"));
+  CHECK_EQ(normalize_server_url("javascript:alert(1)"), std::string(""));
+  CHECK_EQ(normalize_server_url("file:///etc/passwd"), std::string(""));
+}
+
+TEST(url_hosts) {
+  CHECK_EQ(url_host("http://192.168.1.20:8100"), std::string("192.168.1.20"));
+  CHECK_EQ(url_host("https://sh.example.org"), std::string("sh.example.org"));
+  CHECK_EQ(url_host("http://[fe80::1]:81"), std::string("[fe80::1]"));
+  CHECK_EQ(url_host("http://[fe80::1]"), std::string("[fe80::1]"));
+  CHECK_EQ(url_host("home.local"), std::string("home.local"));
+}
+
+TEST(json_escaping) {
+  CHECK_EQ(json_escape("plain"), std::string("plain"));
+  CHECK_EQ(json_escape("a\"b\\c"), std::string("a\\\"b\\\\c"));
+  CHECK_EQ(json_escape("l1\nl2\tx\r"), std::string("l1\\nl2\\tx\\r"));
+  CHECK_EQ(json_escape(std::string("\x01", 1)), std::string("\\u0001"));
+  CHECK_EQ(json_escape("caf\xC3\xA9"), std::string("caf\xC3\xA9"));
+}
+
+TEST(request_bodies) {
+  CHECK_EQ(pair_request_body("guition-jc8012p4a1", "2026.10.13"),
+           std::string(R"({"model": "guition-jc8012p4a1", "firmware": "2026.10.13"})"));
+  CHECK_EQ(claim_request_body("Abc-_123", "guition-jc8012p4a1", "dev"),
+           std::string(R"({"claim": "Abc-_123", "model": "guition-jc8012p4a1", "firmware": "dev"})"));
+  // Whatever Home Assistant passes stays one JSON string.
+  CHECK_EQ(claim_request_body("x\", \"model\": \"evil", "m", "f\\"),
+           std::string(R"({"claim": "x\", \"model\": \"evil", "model": "m", "firmware": "f\\"})"));
+}
+
+TEST(ha_statuses) {
+  CHECK_EQ(std::string(ha_status(false, false, false, false)), std::string("unpaired"));
+  CHECK_EQ(std::string(ha_status(false, true, false, false)), std::string("pairing"));
+  CHECK_EQ(std::string(ha_status(true, true, false, false)), std::string("pairing"));
+  CHECK_EQ(std::string(ha_status(true, false, false, false)), std::string("paired"));
+  CHECK_EQ(std::string(ha_status(true, false, true, false)), std::string("locked"));
+  CHECK_EQ(std::string(ha_status(true, false, false, true)), std::string("unreachable"));
+  CHECK_EQ(std::string(ha_status(false, false, false, true)), std::string("unpaired"));
+}
+
 TEST(retry_after) {
   CHECK_EQ(parse_retry_after("12", 30), 12u);
   CHECK_EQ(parse_retry_after("0", 30), 1u);

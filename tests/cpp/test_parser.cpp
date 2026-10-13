@@ -435,3 +435,43 @@ TEST(request_bodies) {
   CHECK(parse_acknowledged(acked.data(), acked.size()) == ParseResult::OK);
   CHECK(parse_acknowledged("{}", 2) == ParseResult::WRONG_VERSION);
 }
+
+// Connect from Home Assistant: POST /pair/claim. Inline answers until the
+// pinned contract fixtures carry the claim endpoint.
+TEST(pair_claim_paired) {
+  const char *ok =
+      R"({"status": "paired", "token": "Zm9vYmFyYmF6cXV4cXV1eHF1dXpxdXV4cXV1eHF1dXo", "display_id": "9f2c41"})";
+  PairStatus st;
+  CHECK(parse_pair_claim(200, ok, strlen(ok), st) == ClaimResult::PAIRED);
+  CHECK(st.state == PairState::PAIRED);
+  CHECK_EQ(st.token, std::string("Zm9vYmFyYmF6cXV4cXV1eHF1dXpxdXV4cXV1eHF1dXo"));
+  CHECK_EQ(st.token.size(), 43u);
+  CHECK_EQ(st.display_id, std::string("9f2c41"));
+}
+
+TEST(pair_claim_bad_200) {
+  PairStatus st;
+  const char *pending = R"({"status": "pending"})";
+  CHECK(parse_pair_claim(200, pending, strlen(pending), st) == ClaimResult::FAILED);
+  CHECK(st.token.empty());
+  const char *no_token = R"({"status": "paired", "display_id": "9f2c41"})";
+  CHECK(parse_pair_claim(200, no_token, strlen(no_token), st) == ClaimResult::FAILED);
+  CHECK(parse_pair_claim(200, "<html>", 6, st) == ClaimResult::FAILED);
+}
+
+TEST(pair_claim_errors) {
+  PairStatus st;
+  const char *not_found = R"({"error": {"code": "NOT_FOUND", "detail": "Unknown claim."}})";
+  CHECK(parse_pair_claim(404, not_found, strlen(not_found), st) == ClaimResult::EXPIRED);
+  CHECK(parse_pair_claim(404, "", 0, st) == ClaimResult::EXPIRED);
+  const char *disabled = R"({"error": {"code": "DASHBOARD_DISABLED", "detail": "The dashboard is off."}})";
+  CHECK(parse_pair_claim(409, disabled, strlen(disabled), st) == ClaimResult::DISABLED);
+  const char *other_conflict = R"({"error": {"code": "NIGHT"}})";
+  CHECK(parse_pair_claim(409, other_conflict, strlen(other_conflict), st) == ClaimResult::FAILED);
+  const char *busy = R"({"error": {"code": "RATE_LIMITED"}})";
+  CHECK(parse_pair_claim(429, busy, strlen(busy), st) == ClaimResult::BUSY);
+  CHECK(parse_pair_claim(0, "", 0, st) == ClaimResult::FAILED);
+  CHECK(parse_pair_claim(500, "oops", 4, st) == ClaimResult::FAILED);
+  CHECK(parse_pair_claim(401, "", 0, st) == ClaimResult::FAILED);
+  CHECK(st.token.empty());
+}

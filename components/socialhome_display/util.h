@@ -18,6 +18,29 @@ static constexpr int DEFAULT_PORT = 8100;
 /// trailing slash and any path. Empty when nothing usable is left.
 std::string normalize_server_url(const std::string &typed);
 
+/// The host of a normalised base URL, for messages: "http://192.168.1.5:8100"
+/// → "192.168.1.5", "http://[fe80::1]:81" → "[fe80::1]". The input as is when
+/// it has no scheme.
+std::string url_host(const std::string &url);
+
+/// `text` as the inside of a JSON string: quotes, backslashes and control
+/// characters escaped, UTF-8 passed through.
+std::string json_escape(const std::string &text);
+
+/// Body of POST /pair (code pairing): {"model": …, "firmware": …}.
+std::string pair_request_body(const std::string &model, const std::string &firmware);
+
+/// Body of POST /pair/claim (Connect from Home Assistant):
+/// {"claim": …, "model": …, "firmware": …}.
+std::string claim_request_body(const std::string &claim, const std::string &model, const std::string &firmware);
+
+/// The "Social Home status" text sensor Home Assistant sees: "unpaired",
+/// "pairing", "paired", "locked" or "unreachable".
+/// `paired`: a token is stored; `pairing`: a code is shown or a connect
+/// request is running; `locked`: the privacy lock (423); `unreachable`: the
+/// paired server doesn't answer (or speaks an API this firmware can't).
+const char *ha_status(bool paired, bool pairing, bool locked, bool unreachable);
+
 /// Seconds from a Retry-After header (delta-seconds only), clamped to
 /// [1, 3600]; `fallback` when missing or unparsable.
 uint32_t parse_retry_after(const std::string &value, uint32_t fallback);

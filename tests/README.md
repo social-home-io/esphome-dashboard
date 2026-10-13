@@ -3,7 +3,8 @@
 - `scripts/` — unit tests for the CI helper scripts
   (`python -m unittest discover -s tests -t .`).
 - `cpp/` — host C++ tests for the dashboard component: the JSON parser against
-  every pinned Social Home fixture, the layout / URL / emoji helpers (text and
+  every pinned Social Home fixture (the Connect from Home Assistant claim
+  answers too), the layout / URL / emoji / request body helpers (text and
   emoji runs), the map-picture fetch policy and the PNG decoders. `png_bench`
   (built alongside, not a test) times the map picture's decode:
   `build/tests/png_bench map.png`.

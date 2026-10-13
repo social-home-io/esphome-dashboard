@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstring>
 
+#include "esphome/core/application.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
@@ -37,6 +38,9 @@ static constexpr uint32_t THEME_MS = 15 * 60 * 1000;
 static constexpr uint32_t OFFLINE_RETRY_MS = 15000;
 /// How long a tap shows the dashboard at night.
 static constexpr uint32_t NIGHT_PEEK_MS = 60000;
+/// How long a failed Connect from Home Assistant stays on screen before a
+/// paired panel goes back to its dashboard.
+static constexpr uint32_t CLAIM_ERROR_MS = 30000;
 
 // ---- strings -------------------------------------------------------------
 
@@ -53,6 +57,7 @@ const std::string &SocialHomeDisplay::str_(const char *key) const {
       {"server_text", "Type the address of your Social Home. The dashboard port 8100 is added for you."},
       {"server_placeholder", "192.168.1.20 or socialhome.local"},
       {"server_invalid", "That doesn't look like an address. Try 192.168.1.20 or socialhome.local."},
+      {"server_ha", "Or adopt this panel in Home Assistant and press Connect in Social Home."},
       {"connect", "Connect"},
       {"connecting", "Connecting to Social Home\xE2\x80\xA6"},
       {"pair_title", "Pair this panel"},
@@ -61,6 +66,12 @@ const std::string &SocialHomeDisplay::str_(const char *key) const {
       {"pair_expired", "The code expired \xE2\x80\x94 getting a new one\xE2\x80\xA6"},
       {"pair_unreachable", "Can't reach Social Home at this address."},
       {"pair_busy", "Too many pairing attempts. Trying again shortly\xE2\x80\xA6"},
+      {"claim_title", "Connect to Social Home"},
+      {"claim_expired", "This connect request expired. Press Connect in Social Home again."},
+      {"claim_disabled", "The household dashboard is turned off in Social Home."},
+      {"claim_busy", "Too many tries, wait a moment and press Connect again."},
+      {"claim_unreachable", "Can't reach Social Home at {host}."},
+      {"ok", "OK"},
       {"unpaired", "This panel isn't paired any more. Pair it again in Admin \xE2\x80\xBA Dashboard."},
       {"change_server", "Change address"},
       {"retry", "Try again"},
@@ -123,6 +134,12 @@ void SocialHomeDisplay::setup() {
   this->pref_display_ =
       global_preferences->make_preference<StoredText>(fnv1_hash("socialhome_display.display_id"), true);
   this->load_state_();
+  char mac[MAC_ADDRESS_PRETTY_BUFFER_SIZE];
+  this->mac_ = get_mac_address_pretty_into_buffer(mac);
+#ifdef USE_TEXT_SENSOR
+  if (this->node_sensor_ != nullptr)
+    this->node_sensor_->publish_state(App.get_name().str());
+#endif
   this->images_.set_factory([this](const std::string &path) { return this->request_(path); });
   this->map_.set_factory([this](const std::string &path) { return this->request_(path); });
   this->set_mode_(Mode::BOOT);
@@ -134,12 +151,13 @@ void SocialHomeDisplay::dump_config() {
                 "  Firmware: %s\n"
                 "  Model: %s\n"
                 "  Screen: %dx%d (scale %.2f)\n"
+                "  MAC: %s\n"
                 "  Server: %s\n"
                 "  Paired: %s\n"
                 "  Poll interval: %" PRIu32 " ms",
                 FIRMWARE_VERSION, this->model_.c_str(), this->screen_width_, this->screen_height_, this->m_.scale,
-                this->server_.empty() ? "(not set)" : this->server_.c_str(), YESNO(!this->token_.empty()),
-                this->poll_interval_ms_);
+                this->mac_.c_str(), this->server_.empty() ? "(not set)" : this->server_.c_str(),
+                YESNO(!this->token_.empty()), this->poll_interval_ms_);
 }
 
 namespace {
@@ -186,6 +204,11 @@ void SocialHomeDisplay::forget_server() {
   this->pairing_ = PairStart{};
   this->clear_images_ = true;
   this->lock_refused_ = false;
+  this->claim_request_ = 0;
+  this->claim_error_.clear();
+  this->prev_server_.clear();
+  this->prev_token_.clear();
+  this->prev_display_id_.clear();
   this->set_mode_(Mode::NO_SERVER);
 }
 
@@ -231,6 +254,8 @@ HttpRequest SocialHomeDisplay::request_(const std::string &path, bool auth) cons
   request.url = this->server_ + path;
   request.headers.emplace_back("X-Display-Firmware", FIRMWARE_VERSION);
   request.headers.emplace_back("X-Display-Model", this->model_);
+  if (!this->mac_.empty())
+    request.headers.emplace_back("X-Display-Mac", this->mac_);
   if (auth && !this->token_.empty())
     request.headers.emplace_back("Authorization", "Bearer " + this->token_);
   return request;
@@ -279,6 +304,10 @@ void SocialHomeDisplay::loop() {
       this->request_theme_();
   }
   this->tick_map_();
+  if (this->mode_ == Mode::CLAIMING && this->claim_request_ == 0 && this->claim_until_ != 0 &&
+      now >= this->claim_until_)
+    this->finish_claim_();
+  this->publish_status_();
 
   this->tick_idle_();
   this->apply_backlight_();
@@ -293,8 +322,7 @@ void SocialHomeDisplay::start_pairing_() {
   HttpRequest request = this->request_(std::string(API) + "/pair", false);
   request.method = "POST";
   request.headers.emplace_back("Content-Type", "application/json");
-  // model / firmware are short config strings without quotes.
-  request.body = "{\"model\": \"" + this->model_ + "\", \"firmware\": \"" + FIRMWARE_VERSION + "\"}";
+  request.body = pair_request_body(this->model_, FIRMWARE_VERSION);
   request.id = this->pair_request_ = this->next_id_++;
   this->pairing_ = PairStart{};
   this->api_.submit(std::move(request));
@@ -349,6 +377,141 @@ void SocialHomeDisplay::handle_pairing_(HttpResponse &response) {
   }
 }
 
+// ---- Connect from Home Assistant ------------------------------------------------
+//
+// Social Home asks Home Assistant to run this panel's connect_social_home
+// action with its address and a one-time claim (single use, 10 min). The
+// claim travels through HA's recorder, so it is never logged here, and
+// neither is the token it buys.
+
+void SocialHomeDisplay::connect_from_home_assistant(const std::string &url, const std::string &claim) {
+  ESP_LOGI(TAG, "connect: claim received");
+  std::string base = normalize_server_url(url);
+  if (base.empty() || claim.empty()) {
+    ESP_LOGW(TAG, "connect: ignored (%s)", base.empty() ? "no usable server address" : "empty claim");
+    return;
+  }
+  // A working pairing to go back to if the claim fails. A second connect
+  // while one runs keeps the pairing saved by the first.
+  if (this->mode_ != Mode::CLAIMING) {
+    this->prev_server_ = this->token_.empty() ? std::string() : this->server_;
+    this->prev_token_ = this->token_;
+    this->prev_display_id_ = this->display_id_;
+  }
+  this->close_settings_();
+  // Whatever the panel was asking the old address is moot now; answers to
+  // requests already running are ignored by id.
+  this->api_.cancel_if([](const HttpRequest &) { return true; });
+  this->board_request_ = 0;
+  this->theme_request_ = 0;
+  this->pair_request_ = 0;
+  this->server_ = base;
+  this->token_.clear();
+  this->display_id_.clear();
+  // An unpaired panel keeps the address like a typed one. A paired panel
+  // keeps its stored pairing until the claim succeeds.
+  if (this->prev_token_.empty())
+    this->save_state_();
+  ESP_LOGI(TAG, "connect: claiming at %s", base.c_str());
+  HttpRequest request = this->request_(std::string(API) + "/pair/claim", false);
+  request.method = "POST";
+  request.headers.emplace_back("Content-Type", "application/json");
+  request.body = claim_request_body(claim, this->model_, FIRMWARE_VERSION);
+  request.id = this->claim_request_ = this->next_id_++;
+  this->claim_error_.clear();
+  this->claim_until_ = 0;
+  this->set_mode_(Mode::CLAIMING);
+  this->api_.submit(std::move(request));
+}
+
+void SocialHomeDisplay::handle_claim_(HttpResponse &response) {
+  this->claim_request_ = 0;
+  PairStatus status;
+  ClaimResult result = parse_pair_claim(response.status, response.body.data(), response.body.size(), status);
+  if (result == ClaimResult::PAIRED) {
+    ESP_LOGI(TAG, "connect: paired as display %s", status.display_id.c_str());
+    this->token_ = status.token;
+    this->display_id_ = status.display_id;
+    this->save_state_();
+    this->prev_server_.clear();
+    this->prev_token_.clear();
+    this->prev_display_id_.clear();
+    this->pair_note_.clear();
+    this->pairing_ = PairStart{};
+    this->board_.reset();
+    this->etags_.clear();
+    this->theme_ = Theme{};
+    this->theme_etag_.clear();
+    this->clear_images_ = true;
+    this->current_path_ = HOME_PATH;
+    this->set_mode_(Mode::RUNNING);
+    return;
+  }
+  switch (result) {
+    case ClaimResult::EXPIRED:
+      this->claim_error_ = this->str_("claim_expired");
+      break;
+    case ClaimResult::DISABLED:
+      this->claim_error_ = this->str_("claim_disabled");
+      break;
+    case ClaimResult::BUSY:
+      this->claim_error_ = this->str_("claim_busy");
+      break;
+    default: {
+      this->claim_error_ = this->str_("claim_unreachable");
+      size_t at = this->claim_error_.find("{host}");
+      if (at != std::string::npos)
+        this->claim_error_.replace(at, 6, url_host(this->server_));
+      break;
+    }
+  }
+  ESP_LOGW(TAG, "connect: failed (status %d%s%s)", response.status, response.error.empty() ? "" : ", ",
+           response.error.c_str());
+  if (this->prev_token_.empty()) {
+    // Unpaired: the address screen shows why, with the address filled in.
+    this->finish_claim_();
+    return;
+  }
+  this->claim_until_ = millis() + CLAIM_ERROR_MS;
+  this->dirty_ = true;
+}
+
+void SocialHomeDisplay::finish_claim_() {
+  std::string message = std::move(this->claim_error_);
+  this->claim_error_.clear();
+  this->claim_until_ = 0;
+  this->claim_request_ = 0;
+  if (!this->prev_token_.empty()) {
+    // Back to the pairing that worked before the connect.
+    this->server_ = std::move(this->prev_server_);
+    this->token_ = std::move(this->prev_token_);
+    this->display_id_ = std::move(this->prev_display_id_);
+    this->prev_server_.clear();
+    this->prev_token_.clear();
+    this->prev_display_id_.clear();
+    this->set_mode_(Mode::RUNNING);
+    return;
+  }
+  this->prev_server_.clear();
+  this->prev_display_id_.clear();
+  this->set_mode_(Mode::NO_SERVER);
+  this->error_ = std::move(message);
+}
+
+void SocialHomeDisplay::publish_status_() {
+#ifdef USE_TEXT_SENSOR
+  if (this->status_sensor_ == nullptr)
+    return;
+  const bool pairing = this->mode_ == Mode::PAIRING || this->mode_ == Mode::CLAIMING;
+  const bool unreachable = (this->mode_ == Mode::RUNNING && this->offline_) || this->mode_ == Mode::UPDATE_NEEDED;
+  const char *status = ha_status(!this->token_.empty(), pairing, this->mode_ == Mode::LOCKED, unreachable);
+  if (this->published_status_ != nullptr && strcmp(status, this->published_status_) == 0)
+    return;
+  this->published_status_ = status;
+  this->status_sensor_->publish_state(status);
+#endif
+}
+
 // ---- boards ----------------------------------------------------------------
 
 void SocialHomeDisplay::request_board_() {
@@ -373,7 +536,9 @@ void SocialHomeDisplay::request_theme_() {
 void SocialHomeDisplay::handle_api_(HttpResponse &response) {
   if (response.id == 0)
     return;
-  if (response.id == this->pair_request_) {
+  if (response.id == this->claim_request_) {
+    this->handle_claim_(response);
+  } else if (response.id == this->pair_request_) {
     this->handle_pairing_(response);
   } else if (response.id == this->board_request_) {
     this->handle_board_(response);
@@ -872,6 +1037,9 @@ void SocialHomeDisplay::render_() {
       break;
     case Mode::UPDATE_NEEDED:
       this->build_update_(screen);
+      break;
+    case Mode::CLAIMING:
+      this->build_claim_(screen);
       break;
     case Mode::RUNNING:
       if (this->board_ == nullptr) {

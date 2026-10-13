@@ -46,6 +46,14 @@ Other ways to set Wi-Fi:
 3. The panel shows the dashboard. It polls every 30 seconds (and only
    downloads what changed).
 
+Or let Home Assistant do it: adopt the panel in Home Assistant, then press
+**Connect** for it in Social Home. Social Home finds the panel through Home
+Assistant and calls the panel's `connect_social_home` action with its address
+and a one-time claim (valid ten minutes, used once); the panel trades the
+claim for its token, no code needed. Connecting a panel that is already
+paired moves it to the new pairing; if the connect fails, a paired panel
+keeps its old pairing.
+
 Hold the clock for five seconds to open the panel's settings: the server, the
 panel id, the firmware, the licences, and **Forget server** to start over.
 Removing the panel in Social Home sends it back to the pairing code.
@@ -55,7 +63,11 @@ Removing the panel in Social Home sends it back to the pairing code.
 Home Assistant finds the panel through ESPHome. Adopting it is optional: the
 dashboard works without Home Assistant, and the native API never reboots the
 panel when nothing connects. Once adopted, the panel also extends Home
-Assistant's Bluetooth range (active Bluetooth proxy).
+Assistant's Bluetooth range (active Bluetooth proxy), offers the
+`connect_social_home` action Social Home uses to connect it (see above) and
+reports two text sensors: **Social Home status** (`unpaired`, `pairing`,
+`paired`, `locked` or `unreachable`) and **Social Home node** (diagnostic: the
+ESPHome node name, which Social Home reads to call the action).
 
 To build it yourself from the ESPHome dashboard, adopt the panel or start from
 [`devices/guition-jc8012p4a1/esphome.yaml`](devices/guition-jc8012p4a1/esphome.yaml),
@@ -96,7 +108,8 @@ builds/host-sdl.yaml           the app in a headless SDL window, for screenshots
   cpp-httplib on the host build) with ETag revalidation; avatars and emoji are
   decoded (pngle) into ARGB8888 off the main loop.
 - `images.*`: a small PSRAM LRU cache of those pictures.
-- `socialhome_display.cpp`: setup → pairing → polling, every status code the
+- `socialhome_display.cpp`: setup → pairing (a code, or Connect from Home
+  Assistant via `POST /pair/claim`) → polling, every status code the
   API documents (401 pair again, 404/409 back to Overview, 423 lock screen,
   429 Retry-After), clock, idle return, night dimming, screen-off timeout.
 - `ui_*.cpp`: the screens, laid out from the 1280×800 browser dashboard and

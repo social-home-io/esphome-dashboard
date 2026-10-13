@@ -27,7 +27,9 @@ at least 1280×800 that ESPHome supports.
    substitutions (the clock fonts need digits and `:` only).
 3. **Packages:** `devices/<slug>/packages.yaml` sets the substitutions
    (`device_slug`, `screen_width`, `screen_height`, `ui_scale`, font sizes)
-   and lists the `common/` packages. Leave out `bluetooth_proxy.yaml` and the
+   and lists the `common/` packages. Give `socialhome_display` the id
+   `socialhome`: `common/api.yaml` (the `connect_social_home` action and the
+   Social Home text sensors) refers to it. Leave out `bluetooth_proxy.yaml` and the
    `esp32_improv` part of Improv when the panel has no BLE, and
    `update_esp32_hosted.yaml` when it has no hosted co-processor.
 4. **User config:** `devices/<slug>/esphome.yaml`, a copy of an existing one

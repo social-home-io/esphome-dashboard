@@ -95,8 +95,15 @@ void SocialHomeDisplay::build_server_(lv_obj_t *screen) {
   this->server_input_ = input;
   if (!this->error_.empty())
     this->wrap_(card, this->error_, FontRole::BODY, p.error_text);
-  lv_obj_t *actions = this->row_(card, this->m_.px(12));
+  lv_obj_t *actions = this->row_(card, this->m_.px(20));
+  lv_obj_set_width(actions, LV_PCT(100));
   this->button_(actions, this->str_("connect"), true, SocialHomeDisplay::on_server_ready_, this);
+  // The other way in: Social Home finds the panel through Home Assistant and
+  // hands over its address (the connect_social_home action). Next to the
+  // button, so an error line still leaves the card above the keyboard.
+  lv_obj_t *ha = this->wrap_(actions, this->str_("server_ha"), FontRole::BODY, p.muted);
+  lv_obj_set_width(ha, 1);
+  lv_obj_set_flex_grow(ha, 1);
 
   lv_obj_t *keyboard = lv_keyboard_create(screen);
   lv_obj_set_size(keyboard, LV_PCT(100), this->screen_height_ * 42 / 100);
@@ -152,6 +159,29 @@ void SocialHomeDisplay::build_pairing_(lv_obj_t *screen) {
   this->button_(actions, this->str_("change_server"), false, SocialHomeDisplay::on_change_server_, this);
   if (!this->error_.empty())
     this->button_(actions, this->str_("retry"), true, SocialHomeDisplay::on_retry_, this);
+}
+
+void SocialHomeDisplay::on_claim_done_(lv_event_t *event) {
+  auto *self = static_cast<SocialHomeDisplay *>(lv_event_get_user_data(event));
+  if (self->mode_ == Mode::CLAIMING && self->claim_request_ == 0)
+    self->finish_claim_();
+}
+
+void SocialHomeDisplay::build_claim_(lv_obj_t *screen) {
+  const Palette &p = this->palette_();
+  if (this->claim_error_.empty()) {
+    lv_obj_t *card = this->setup_card_(screen, this->str_("claim_title"), this->str_("connecting"));
+    lv_obj_t *server = this->text_(card, this->server_, FontRole::SMALL, p.muted);
+    lv_label_set_long_mode(server, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_width(server, LV_PCT(100));
+    return;
+  }
+  // Only a panel that was paired before lands here (an unpaired one goes
+  // straight to the address screen): OK, or the timeout, goes back to it.
+  lv_obj_t *card = this->setup_card_(screen, this->str_("claim_title"), "");
+  this->wrap_(card, this->claim_error_, FontRole::BODY, p.error_text);
+  lv_obj_t *actions = this->row_(card, this->m_.px(12));
+  this->button_(actions, this->str_("ok"), true, SocialHomeDisplay::on_claim_done_, this);
 }
 
 void SocialHomeDisplay::build_update_(lv_obj_t *screen) {
