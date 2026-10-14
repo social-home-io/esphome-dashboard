@@ -40,3 +40,27 @@ text_sensor:
     # "Social Home key". Renewed on Forget server and after a factory reset.
     key:
       name: Social Home key
+    # Whether the household's admin lets Home Assistant lift the privacy
+    # lock below ("Home Assistant may unlock wall panels"): allowed / off.
+    # Keeps its last value while the panel is unpaired or pairing.
+    ha_unlock:
+      name: Social Home HA unlock
+
+# The panel's privacy lock (the lock screen with its PIN pad). Its state
+# follows the panel: locked or unlocked from the PIN pad, by an admin in
+# Social Home or from here; locking / unlocking while Social Home is asked;
+# jammed while the panel can't lock (not paired, pairing, an update needed,
+# or Social Home out of reach). Locking needs a household PIN; unlocking
+# needs the admin's "Home Assistant may unlock wall panels" (the panel logs
+# why otherwise and stays locked). Not optimistic: the lambda reports what
+# the panel does (read every loop; ESPHome's lock publishes changes only).
+lock:
+  - platform: template
+    id: privacy_lock
+    name: Privacy lock
+    icon: mdi:lock
+    lambda: return id(socialhome).privacy_lock_state();
+    lock_action:
+      - lambda: id(socialhome).lock_from_home_assistant();
+    unlock_action:
+      - lambda: id(socialhome).unlock_from_home_assistant();

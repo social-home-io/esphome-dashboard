@@ -88,12 +88,22 @@ dashboard works without Home Assistant, and the native API never reboots the
 panel when nothing connects. Once adopted, the panel also extends Home
 Assistant's Bluetooth range (active Bluetooth proxy), offers the
 `connect_social_home` action Social Home uses to connect it (see above) and
-reports three text sensors: **Social Home status** (`unpaired`, `pairing`,
+reports four text sensors: **Social Home status** (`unpaired`, `pairing`,
 `paired`, `locked` or `unreachable`), **Social Home node** (diagnostic: the
-ESPHome node name, which Social Home reads to call the action) and **Social
+ESPHome node name, which Social Home reads to call the action), **Social
 Home key** (diagnostic: the panel's public key, 43 characters of base64url,
-which Social Home seals the connect claim to). Social Home finds both
-diagnostic sensors by these exact names.
+which Social Home seals the connect claim to) and **Social Home HA unlock**
+(diagnostic: `allowed` or `off`; keeps its last value while unpaired).
+Social Home finds the node and key sensors by these exact names.
+
+The **Privacy lock** entity locks the panel as its lock button does (the
+household needs a PIN) and shows its lock wherever it came from: the PIN
+pad, an admin in Social Home or Home Assistant. Unlocking it from Home
+Assistant skips the PIN, so it only works once an admin turns on **Home
+Assistant may unlock wall panels** in Social Home (Admin › Dashboard › Wall
+panels); otherwise the panel stays locked and logs why. The lock reads
+*jammed* while the panel can't lock: not paired, pairing, needing an update
+or unable to reach Social Home.
 
 To build it yourself from the ESPHome dashboard, adopt the panel or start from
 [`devices/guition-jc8012p4a1/esphome.yaml`](devices/guition-jc8012p4a1/esphome.yaml),

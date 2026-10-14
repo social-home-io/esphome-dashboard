@@ -54,6 +54,10 @@ static constexpr uint32_t PIN_PAD_IDLE_MS = 60000;
 /// How long a failed Connect from Home Assistant stays on screen before a
 /// paired panel goes back to its dashboard.
 static constexpr uint32_t CLAIM_ERROR_MS = 30000;
+/// Why Home Assistant's unlock doesn't go through, and how to change that.
+static const char *const HA_UNLOCK_OFF_NOTE =
+    "Home Assistant can't unlock this panel: an admin must turn on \"Home Assistant may unlock wall panels\" in "
+    "Social Home (Admin \xE2\x80\xBA Dashboard \xE2\x80\xBA Wall panels)";
 
 // ---- strings -------------------------------------------------------------
 
@@ -289,6 +293,8 @@ void SocialHomeDisplay::forget_server() {
   this->lock_refused_ = false;
   this->claim_request_ = 0;
   this->claim_error_.clear();
+  this->claim_was_locked_ = false;
+  this->ha_unlock_wait_until_ = 0;
   this->prev_server_.clear();
   this->prev_token_.clear();
   this->prev_display_id_.clear();
@@ -306,6 +312,12 @@ bool SocialHomeDisplay::network_up_() const {
 void SocialHomeDisplay::set_mode_(Mode mode) {
   if (mode != this->mode_)
     ESP_LOGD(TAG, "Mode %d -> %d", static_cast<int>(this->mode_), static_cast<int>(mode));
+  // Locked, or unlocked from the lock screen: the server said so. Starting
+  // the dashboard from anywhere else: not until its first answer.
+  if (mode == Mode::LOCKED || (mode == Mode::RUNNING && this->mode_ == Mode::LOCKED))
+    this->lock_known_ = true;
+  else if (mode != Mode::RUNNING || this->mode_ != Mode::RUNNING)
+    this->lock_known_ = false;
   this->mode_ = mode;
   this->mode_since_ = millis();
   this->dirty_ = true;
@@ -405,6 +417,7 @@ void SocialHomeDisplay::loop() {
       now >= this->claim_until_)
     this->finish_claim_();
   this->publish_status_();
+  this->publish_ha_unlock_();
 
   this->tick_idle_();
   this->apply_backlight_();
@@ -531,12 +544,19 @@ void SocialHomeDisplay::refuse_claim_() {
     this->prev_server_ = this->token_.empty() ? std::string() : this->server_;
     this->prev_token_ = this->token_;
     this->prev_display_id_ = this->display_id_;
+    // A locked panel goes back to its lock screen (finish_claim_).
+    this->claim_was_locked_ = this->mode_ == Mode::LOCKED;
   }
   this->close_settings_();
   this->api_.cancel_if([](const HttpRequest &) { return true; });
+  // Cancelled "Got it"s never answer: shown again by the next board.
+  this->ack_requests_.clear();
   this->board_request_ = 0;
   this->theme_request_ = 0;
   this->pair_request_ = 0;
+  this->lock_request_ = 0;
+  this->unlock_request_ = 0;
+  this->ha_unlock_request_ = 0;
   this->claim_request_ = 0;
   this->claim_error_ = this->str_("claim_sealed");
   if (this->prev_token_.empty()) {
@@ -557,14 +577,24 @@ void SocialHomeDisplay::claim_at_(const std::string &base, const std::string &cl
     this->prev_server_ = this->token_.empty() ? std::string() : this->server_;
     this->prev_token_ = this->token_;
     this->prev_display_id_ = this->display_id_;
+    // A connect that doesn't pair must not lift the privacy lock: a locked
+    // panel goes back to its lock screen (finish_claim_). The CLAIMING
+    // screen in between shows only the address and why, no household data.
+    this->claim_was_locked_ = this->mode_ == Mode::LOCKED;
   }
   this->close_settings_();
   // Whatever the panel was asking the old address is moot now; answers to
   // requests already running are ignored by id.
   this->api_.cancel_if([](const HttpRequest &) { return true; });
+  // Cancelled "Got it"s never answer: shown again by the next board.
+  this->ack_requests_.clear();
   this->board_request_ = 0;
   this->theme_request_ = 0;
   this->pair_request_ = 0;
+  // Dropped from the queue, they'd never answer: a lock stuck "locking".
+  this->lock_request_ = 0;
+  this->unlock_request_ = 0;
+  this->ha_unlock_request_ = 0;
   this->server_ = base;
   this->token_.clear();
   this->display_id_.clear();
@@ -598,6 +628,9 @@ void SocialHomeDisplay::handle_claim_(HttpResponse &response) {
     this->prev_server_.clear();
     this->prev_token_.clear();
     this->prev_display_id_.clear();
+    // A new pairing starts afresh: the new server says whether it's locked.
+    this->claim_was_locked_ = false;
+    this->ha_unlock_wait_until_ = 0;
     this->pair_note_.clear();
     this->pairing_ = PairStart{};
     this->board_.reset();
@@ -639,16 +672,29 @@ void SocialHomeDisplay::finish_claim_() {
   this->claim_error_.clear();
   this->claim_until_ = 0;
   this->claim_request_ = 0;
-  if (!this->prev_token_.empty()) {
-    // Back to the pairing that worked before the connect.
-    this->server_ = std::move(this->prev_server_);
-    this->token_ = std::move(this->prev_token_);
-    this->display_id_ = std::move(this->prev_display_id_);
-    this->prev_server_.clear();
-    this->prev_token_.clear();
-    this->prev_display_id_.clear();
-    this->set_mode_(Mode::RUNNING);
-    return;
+  const bool was_locked = this->claim_was_locked_;
+  this->claim_was_locked_ = false;
+  switch (phase_after_failed_claim(!this->prev_token_.empty(), was_locked)) {
+    case PanelPhase::LOCKED:
+    case PanelPhase::RUNNING:
+      // Back to the pairing that worked before the connect: its lock
+      // screen when it was locked (lock_ is still the server's; the next
+      // poll refreshes it), never the dashboard behind it.
+      this->server_ = std::move(this->prev_server_);
+      this->token_ = std::move(this->prev_token_);
+      this->display_id_ = std::move(this->prev_display_id_);
+      this->prev_server_.clear();
+      this->prev_token_.clear();
+      this->prev_display_id_.clear();
+      if (was_locked) {
+        this->current_path_ = HOME_PATH;
+        this->set_mode_(Mode::LOCKED);
+      } else {
+        this->set_mode_(Mode::RUNNING);
+      }
+      return;
+    default:
+      break;
   }
   this->prev_server_.clear();
   this->prev_display_id_.clear();
@@ -668,6 +714,126 @@ void SocialHomeDisplay::publish_status_() {
   this->published_status_ = status;
   this->status_sensor_->publish_state(status);
 #endif
+}
+
+void SocialHomeDisplay::publish_ha_unlock_() {
+#ifdef USE_TEXT_SENSOR
+  if (this->ha_unlock_sensor_ == nullptr || !this->lock_known_)
+    return;
+  // The lock screen's flag while locked, the board's settings otherwise.
+  bool allowed;
+  if (this->mode_ == Mode::LOCKED)
+    allowed = this->lock_.ha_unlock;
+  else if (this->mode_ == Mode::RUNNING && this->board_ != nullptr)
+    allowed = this->board_->header.settings.ha_unlock;
+  else
+    return;
+  const char *value = allowed ? "allowed" : "off";
+  if (this->published_ha_unlock_ != nullptr && strcmp(value, this->published_ha_unlock_) == 0)
+    return;
+  this->published_ha_unlock_ = value;
+  this->ha_unlock_sensor_->publish_state(value);
+#endif
+}
+
+// ---- Home Assistant's "Privacy lock" -------------------------------------------
+//
+// A template lock in common/api.yaml: its lambda reads privacy_lock_state()
+// every loop (ESPHome's lock publishes only changes), its lock / unlock
+// actions call these. The state comes from what the panel is doing, so a
+// lock or unlock from the PIN pad, by an admin or from Home Assistant all
+// show the same way.
+
+PrivacyLock SocialHomeDisplay::privacy_lock() const {
+  PrivacyLockInputs in;
+  switch (this->mode_) {
+    case Mode::BOOT:
+      in.phase = PanelPhase::STARTING;
+      break;
+    case Mode::RUNNING:
+      in.phase = PanelPhase::RUNNING;
+      break;
+    case Mode::LOCKED:
+      in.phase = PanelPhase::LOCKED;
+      break;
+    default:
+      in.phase = PanelPhase::SETUP;
+      break;
+  }
+  in.known = this->lock_known_;
+  in.offline = this->offline_;
+  in.locking = this->lock_request_ != 0;
+  in.unlocking = this->unlock_request_ != 0 || this->ha_unlock_request_ != 0;
+  return socialhome_display::privacy_lock_state(in);
+}
+
+#ifdef USE_LOCK
+optional<lock::LockState> SocialHomeDisplay::privacy_lock_state() const {
+  switch (this->privacy_lock()) {
+    case PrivacyLock::LOCKED:
+      return lock::LOCK_STATE_LOCKED;
+    case PrivacyLock::UNLOCKED:
+      return lock::LOCK_STATE_UNLOCKED;
+    case PrivacyLock::JAMMED:
+      return lock::LOCK_STATE_JAMMED;
+    case PrivacyLock::LOCKING:
+      return lock::LOCK_STATE_LOCKING;
+    case PrivacyLock::UNLOCKING:
+      return lock::LOCK_STATE_UNLOCKING;
+    case PrivacyLock::UNCHANGED:
+    default:
+      return nullopt;
+  }
+}
+#endif
+
+void SocialHomeDisplay::lock_from_home_assistant() {
+  switch (this->mode_) {
+    case Mode::LOCKED:
+      ESP_LOGI(TAG, "Home Assistant: already locked");
+      return;
+    case Mode::RUNNING:
+      break;
+    default:
+      ESP_LOGW(TAG, "Home Assistant can't lock this panel now: it isn't showing a household's dashboard");
+      return;
+  }
+  // Locking needs a household PIN (to unlock again): don't ask in vain.
+  if (this->lock_refused_ || (this->board_ != nullptr && !this->board_->header.settings.pin_set)) {
+    ESP_LOGW(TAG, "Home Assistant can't lock this panel: the household has no PIN \xE2\x80\x94 set one in Social Home "
+                  "(Admin \xE2\x80\xBA Dashboard)");
+    return;
+  }
+  // The server decides: 409 (no PIN) leaves it unlocked with a warning.
+  ESP_LOGI(TAG, "Home Assistant: locking");
+  this->request_lock_();
+}
+
+void SocialHomeDisplay::unlock_from_home_assistant() {
+  switch (this->mode_) {
+    case Mode::LOCKED:
+      break;
+    case Mode::RUNNING:
+      ESP_LOGI(TAG, "Home Assistant: not locked");
+      return;
+    default:
+      ESP_LOGW(TAG, "Home Assistant can't unlock this panel now: it isn't showing a household's dashboard");
+      return;
+  }
+  // The lock screen says whether the admin allows it: don't ask in vain.
+  if (!this->lock_.ha_unlock) {
+    ESP_LOGW(TAG, "%s", HA_UNLOCK_OFF_NOTE);
+    return;
+  }
+  // 429 earlier: Social Home said when to try again.
+  if (waiting_until(millis(), this->ha_unlock_wait_until_)) {
+    ESP_LOGW(TAG, "Home Assistant unlock: too many tries; try again in %" PRIu32 " s",
+             (this->ha_unlock_wait_until_ - millis() + 999) / 1000);
+    return;
+  }
+  this->ha_unlock_wait_until_ = 0;
+  ESP_LOGI(TAG, "Home Assistant: unlocking");
+  this->request_ha_unlock_();
 }
 
 // ---- boards ----------------------------------------------------------------
@@ -706,6 +872,8 @@ void SocialHomeDisplay::handle_api_(HttpResponse &response) {
     this->handle_lock_(response);
   } else if (response.id == this->unlock_request_) {
     this->handle_unlock_(response);
+  } else if (response.id == this->ha_unlock_request_) {
+    this->handle_ha_unlock_(response);
   } else {
     auto ack = this->ack_requests_.find(response.id);
     if (ack != this->ack_requests_.end()) {
@@ -736,8 +904,10 @@ void SocialHomeDisplay::request_lock_() {
   HttpRequest request = this->request_(std::string(API) + "/lock");
   request.method = "POST";
   request.id = this->lock_request_ = this->next_id_++;
-  if (!this->api_.submit(std::move(request)))
+  if (!this->api_.submit(std::move(request))) {
     this->lock_request_ = 0;
+    ESP_LOGW(TAG, "Lock: the request queue is full");
+  }
 }
 
 void SocialHomeDisplay::handle_lock_(HttpResponse &response) {
@@ -777,7 +947,7 @@ void SocialHomeDisplay::request_unlock_() {
   const uint32_t now = millis();
   if (this->pin_.empty() || this->unlock_request_ != 0)
     return;
-  if (this->pin_wait_until_ != 0 && static_cast<int32_t>(now - this->pin_wait_until_) < 0)
+  if (waiting_until(now, this->pin_wait_until_))
     return;
   this->pin_wait_until_ = 0;
   HttpRequest request = this->request_(std::string(API) + "/unlock");
@@ -835,6 +1005,60 @@ void SocialHomeDisplay::handle_unlock_(HttpResponse &response) {
   }
   this->pin_error_ = true;
   this->dirty_ = true;
+}
+
+void SocialHomeDisplay::request_ha_unlock_() {
+  if (this->ha_unlock_request_ != 0)
+    return;
+  HttpRequest request = this->request_(std::string(API) + "/unlock/ha");
+  request.method = "POST";
+  request.id = this->ha_unlock_request_ = this->next_id_++;
+  if (!this->api_.submit(std::move(request))) {
+    this->ha_unlock_request_ = 0;
+    ESP_LOGW(TAG, "Home Assistant unlock: the request queue is full");
+  }
+}
+
+void SocialHomeDisplay::handle_ha_unlock_(HttpResponse &response) {
+  this->ha_unlock_request_ = 0;
+  switch (response.status) {
+    case 200:
+      // Also when it wasn't locked any more (the PIN, or an admin, was quicker).
+      if (parse_unlocked(response.body.data(), response.body.size()) != ParseResult::OK) {
+        ESP_LOGW(TAG, "Home Assistant unlock: unexpected answer");
+        return;
+      }
+      if (this->mode_ == Mode::LOCKED) {
+        ESP_LOGI(TAG, "Unlocked from Home Assistant");
+        this->set_mode_(Mode::RUNNING);
+      }
+      return;
+    case 401:
+      this->unpair_();
+      return;
+    case 403: {
+      const std::string code = parse_error_code(response.body.data(), response.body.size());
+      if (code == "DISPLAY_HA_UNLOCK_OFF") {
+        // Turned off since the lock screen was fetched: stay locked.
+        this->lock_.ha_unlock = false;
+        ESP_LOGW(TAG, "%s", HA_UNLOCK_OFF_NOTE);
+      } else {
+        ESP_LOGW(TAG, "Home Assistant unlock: refused (%s)", code.empty() ? "403" : code.c_str());
+      }
+      return;
+    }
+    case 429: {
+      const ApiError error = parse_error(response.body.data(), response.body.size());
+      const uint32_t wait = parse_retry_after(response.retry_after, error.retry_after > 0 ? error.retry_after : 60);
+      // max(1, …): 0 means "no wait".
+      this->ha_unlock_wait_until_ = std::max<uint32_t>(1, millis() + wait * 1000);
+      ESP_LOGW(TAG, "Home Assistant unlock: too many tries; try again in %" PRIu32 " s", wait);
+      return;
+    }
+    default:
+      ESP_LOGW(TAG, "Home Assistant unlock: status %d %s", response.status, response.error.c_str());
+      return;
+  }
 }
 
 const Mention *SocialHomeDisplay::find_mention_(const std::string &key) const {
@@ -965,6 +1189,7 @@ void SocialHomeDisplay::handle_board_(HttpResponse &response) {
       this->offline_ = false;
       if (this->mode_ != Mode::RUNNING)
         this->set_mode_(Mode::RUNNING);
+      this->lock_known_ = true;
       // Forget dismissed banners the server no longer sends.
       std::set<std::string> live;
       for (const auto &a : this->board_->header.alerts)
@@ -977,6 +1202,8 @@ void SocialHomeDisplay::handle_board_(HttpResponse &response) {
       return;
     }
     case 304:
+      if (this->mode_ == Mode::RUNNING)
+        this->lock_known_ = true;
       if (this->offline_) {
         this->offline_ = false;
         this->dirty_ = true;
@@ -1005,6 +1232,10 @@ void SocialHomeDisplay::handle_board_(HttpResponse &response) {
         return;
       }
       if (r == ParseResult::OK) {
+        // The server answered: not offline. The lock screen doesn't show
+        // it (no rebuild that would wipe a PIN being typed); the dashboard
+        // after an unlock and the lock entity must not think it is.
+        this->offline_ = false;
         bool was_locked = this->mode_ == Mode::LOCKED;
         // Rebuild only for a change the screen shows (the time ticks by
         // itself): a rebuild under a pressing finger loses the tap, and one

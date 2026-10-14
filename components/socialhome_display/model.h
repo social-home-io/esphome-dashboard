@@ -72,6 +72,9 @@ struct Settings {
   std::string night_start;
   std::string night_end;
   bool pin_set{false};
+  /// The admin lets Home Assistant lift the privacy lock without the PIN
+  /// (POST /unlock/ha). Absent (older servers): off.
+  bool ha_unlock{false};
 };
 
 struct Rail {
@@ -576,6 +579,9 @@ struct LockScreen {
   std::string tries_left;  ///< "Tries left: {n}"
   std::string last_try;    ///< with one try left, instead of tries_left
   std::string forgot_pin;  ///< under the PIN pad: who can change it
+  /// Home Assistant may lift this lock (POST /unlock/ha), as the board's
+  /// `settings.ha_unlock`. Not drawn. Absent (older servers): off.
+  bool ha_unlock{false};
 };
 
 /// An error body ({"error": {"code", "detail", "params"}}).

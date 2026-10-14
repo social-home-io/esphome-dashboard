@@ -319,6 +319,7 @@ void header(JO root, Header &h) {
   h.settings.night_start = s(st["night_start"]);
   h.settings.night_end = s(st["night_end"]);
   h.settings.pin_set = b(st["pin_set"]);
+  h.settings.ha_unlock = b(st["ha_unlock"]);
   JV rail = root["rail"];
   h.rail.shown = b(rail["shown"], true);
   h.rail.many = b(rail["many"]);
@@ -709,6 +710,7 @@ ParseResult parse_lock(const char *data, size_t len, LockScreen &out) {
   out.locale = s(root["locale"]);
   out.clock = clock(root["clock"]);
   out.is_night = b(root["is_night"]);
+  out.ha_unlock = b(root["ha_unlock"]);
   JV st = root["strings"];
   out.locked = s(st["locked"]);
   out.pin_button = s(st["pin_button"]);

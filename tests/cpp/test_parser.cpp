@@ -397,6 +397,42 @@ TEST(pairing) {
   CHECK(parse_pair_status(no_token, strlen(no_token), st) == ParseResult::BAD_SHAPE);
 }
 
+TEST(lock_screen_ha_unlock) {
+  // `ha_unlock`: may Home Assistant lift this lock (the admin's "Home
+  // Assistant may unlock wall panels"). Servers before it don't send it:
+  // read as off, so the panel never asks in vain.
+  std::string json = check::fixture("locked.json");
+  LockScreen lock;
+  CHECK(parse_lock(json.data(), json.size(), lock) == ParseResult::OK);
+  CHECK(!lock.ha_unlock);
+  std::string on = with(json, "\"is_night\": false", "\"is_night\": false, \"ha_unlock\": true");
+  CHECK(parse_lock(on.data(), on.size(), lock) == ParseResult::OK);
+  CHECK(lock.ha_unlock);
+  std::string off = with(json, "\"is_night\": false", "\"is_night\": false, \"ha_unlock\": false");
+  CHECK(parse_lock(off.data(), off.size(), lock) == ParseResult::OK);
+  CHECK(!lock.ha_unlock);
+  // Not a boolean: off.
+  std::string odd = with(json, "\"is_night\": false", "\"is_night\": false, \"ha_unlock\": \"yes\"");
+  CHECK(parse_lock(odd.data(), odd.size(), lock) == ParseResult::OK);
+  CHECK(!lock.ha_unlock);
+}
+
+TEST(settings_ha_unlock) {
+  // The board header's settings carry the same flag.
+  std::string json = check::fixture("home.json");
+  Board b;
+  CHECK(parse_board(json.data(), json.size(), b) == ParseResult::OK);
+  CHECK(!b.header.settings.ha_unlock);
+  std::string on = with(json, "\"pin_set\": false", "\"pin_set\": false, \"ha_unlock\": true");
+  Board b2;
+  CHECK(parse_board(on.data(), on.size(), b2) == ParseResult::OK);
+  CHECK(b2.header.settings.ha_unlock);
+  std::string off = with(json, "\"pin_set\": false", "\"pin_set\": false, \"ha_unlock\": false");
+  Board b3;
+  CHECK(parse_board(off.data(), off.size(), b3) == ParseResult::OK);
+  CHECK(!b3.header.settings.ha_unlock);
+}
+
 TEST(error_codes) {
   const char *night = R"({"error": {"code": "NIGHT", "detail": "Night mode shows Overview only."}})";
   CHECK_EQ(parse_error_code(night, strlen(night)), std::string("NIGHT"));
