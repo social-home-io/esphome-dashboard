@@ -36,7 +36,23 @@
 namespace esphome::socialhome_display {
 
 /// The fonts the browser dashboard's sizes map onto (see device fonts.yaml).
-enum class FontRole : uint8_t { SMALL, LABEL, BODY, BODY_BOLD, LARGE, TITLE, DISPLAY, CLOCK, NIGHT, COUNT };
+/// LOCK is the lock screen's clock with the PIN pad open; TEXT / TEXT_BOLD
+/// the lock screen's 18 px page text (the PIN button, alert, hint).
+enum class FontRole : uint8_t {
+  SMALL,
+  LABEL,
+  BODY,
+  BODY_BOLD,
+  LARGE,
+  TITLE,
+  DISPLAY,
+  CLOCK,
+  NIGHT,
+  LOCK,
+  TEXT,
+  TEXT_BOLD,
+  COUNT
+};
 
 /// What the panel is doing.
 enum class Mode : uint8_t {
@@ -224,6 +240,10 @@ class SocialHomeDisplay : public Component {
   lv_obj_t *build_tile_(lv_obj_t *parent, const Tile &tile, int size);
   void build_night_(lv_obj_t *screen);            // ui_setup.cpp
   void build_lock_(lv_obj_t *screen);
+  /// The typed dots and the ⌫ / ✓ keys' enabled state, in place.
+  void update_pin_pad_();
+  /// Put the PIN pad away (idle, or a new lock screen).
+  void close_pin_pad_();
   void build_wifi_(lv_obj_t *screen);
   void build_server_(lv_obj_t *screen);
   void build_pairing_(lv_obj_t *screen);
@@ -372,9 +392,13 @@ class SocialHomeDisplay : public Component {
   lv_font_t keyboard_font_{};
   std::string pin_;
   lv_obj_t *pin_dots_{nullptr};
-  lv_obj_t *pin_note_{nullptr};
+  lv_obj_t *pin_del_{nullptr};
+  lv_obj_t *pin_ok_{nullptr};
   bool pin_open_{false};
-  std::string pin_message_;  ///< under the PIN pad ("Wrong PIN · 4 tries left")
+  /// The PIN pad's alert, as on the tablet: "Wrong PIN" (or why it can't
+  /// try) and, bold under it, "Tries left: n" / the last-try warning.
+  std::string pin_message_;
+  std::string pin_detail_;
   bool pin_error_{false};
   uint32_t pin_wait_until_{0};  ///< 429: no new try before this (millis)
   uint32_t press_started_{0};

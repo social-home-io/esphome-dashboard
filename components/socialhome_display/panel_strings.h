@@ -30,4 +30,11 @@ const std::string &panel_string(const Theme &theme, const char *key);
 /// A translation without the placeholder is kept as it is.
 std::string fill_placeholder(const std::string &text, const char *name, const std::string &value);
 
+/// The line under "Wrong PIN" after a DISPLAY_PIN_WRONG with `remaining`
+/// tries left, as on the wall tablet's lock screen: `tries_left` with `{n}`
+/// filled ("Tries left: 3"), or `last_try` with one left (the next wrong PIN
+/// unpairs the panel; the server never sends 0, which reads the same).
+/// Empty when the server sent no count (`remaining` < 0).
+std::string pin_tries_note(int remaining, const std::string &tries_left, const std::string &last_try);
+
 }  // namespace esphome::socialhome_display

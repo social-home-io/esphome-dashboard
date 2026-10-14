@@ -143,6 +143,12 @@ builds/host-sdl.yaml           the app in a headless SDL window, for screenshots
 - `panel_strings.*` / `theme_cache.*`: the words the panel draws itself and
   the last theme kept across reboots.
 
+The privacy lock screen is the wall tablet's, element for element: household
+name, the clock (160 px; 96 px with the PIN pad open), the date and a "🔒 PIN"
+button; the pad shows the tablet's alert ("Wrong PIN" with "Tries left: n", or
+the last-try warning), "Enter PIN", the typed dots, a 4–6 digit keypad and
+"Forgot the PIN?" — and closes after a quiet minute, as on the tablet.
+
 Every string a person reads comes from the server in the household's language:
 the boards carry their own words, and the theme (`GET /theme`) carries the
 panel's — setup, pairing, errors, the PIN pad, settings, the Improv prompt.
@@ -156,8 +162,10 @@ fonts carry none.
 The panel picks its palette as the browser dashboard does. In the household's
 night window the night screen — and the dashboard someone wakes from it, which
 hides its tabs and "See all" links like the browser — always uses the night
-palette, whatever the colour mode. Everything else (the lock screen and PIN
-pad, settings, setup and error screens) follows the theme's colour mode:
+palette, whatever the colour mode. So does the privacy lock screen while its
+423 body says `is_night` (the backlight dims too; an open PIN pad lights it
+up). Everything else (the lock screen by day, settings, setup and error
+screens) follows the theme's colour mode:
 **Light** and **Dark** stay as they are, day and night; **Auto** has no system
 setting to follow on a panel, so it is light by day and dark during the night
 window. "Night" is the server's `is_night` flag on each board — the same flag

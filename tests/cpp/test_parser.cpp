@@ -285,6 +285,16 @@ TEST(lock_screen) {
   CHECK_EQ(lock.enter_pin, std::string("Enter PIN"));
   CHECK_EQ(lock.del, std::string("Delete last digit"));
   CHECK_EQ(lock.wrong_pin, std::string("Wrong PIN"));
+  // What the tablet's lock screen shows beyond that: day or night, and the
+  // PIN pad's tries-left / last-try / forgotten-PIN lines.
+  CHECK(!lock.is_night);
+  CHECK_EQ(lock.tries_left, std::string("Tries left: {n}"));
+  CHECK_EQ(lock.last_try, std::string("Last try \xE2\x80\x94 one more wrong PIN signs this screen out."));
+  CHECK_EQ(lock.forgot_pin, std::string("Forgot the PIN? An admin can change it in Social Home under Admin "
+                                        "\xE2\x80\xBA Dashboard."));
+  std::string night = with(json, "\"is_night\": false", "\"is_night\": true");
+  CHECK(parse_lock(night.data(), night.size(), lock) == ParseResult::OK);
+  CHECK(lock.is_night);
   // A board is not a lock body.
   std::string home = check::fixture("home.json");
   CHECK(parse_lock(home.data(), home.size(), lock) == ParseResult::BAD_SHAPE);

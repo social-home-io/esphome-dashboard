@@ -546,3 +546,18 @@ TEST(offline_live_data_greys_but_stays_readable) {
 TEST(offline_fades_pictures_like_the_browser) {
   CHECK_EQ(static_cast<int>(OPA_STALE_PICTURE), 115);  // opacity: 0.45
 }
+
+TEST(pin_pad_keys_like_the_tablet) {
+  // Digits append up to six (the tablet's maxlength), ⌫ drops the last.
+  std::string pin;
+  for (const char *k : {"1", "2", "3", "4", "5", "6", "7"})
+    pin = pin_after_key(pin, k);
+  CHECK_EQ(pin, std::string("123456"));
+  CHECK_EQ(pin_after_key(pin, "del"), std::string("12345"));
+  CHECK_EQ(pin_after_key("", "del"), std::string(""));
+  CHECK_EQ(pin_after_key("12", "x"), std::string("12"));
+  CHECK_EQ(pin_after_key("12", "12"), std::string("12"));
+  // ✓ needs four (minlength).
+  CHECK(!pin_ready("123"));
+  CHECK(pin_ready("1234"));
+}

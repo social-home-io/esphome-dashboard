@@ -23,6 +23,12 @@ const lv_font_t *SocialHomeDisplay::font_(FontRole role) const {
   if (f == nullptr) {
     // Fall back along the size ladder so a device can ship fewer fonts.
     switch (role) {
+      case FontRole::LOCK:
+        return this->font_(FontRole::DISPLAY);
+      case FontRole::TEXT:
+        return this->font_(FontRole::SMALL);
+      case FontRole::TEXT_BOLD:
+        return this->font_(FontRole::LABEL);
       case FontRole::NIGHT:
         return this->font_(FontRole::CLOCK);
       case FontRole::CLOCK:
@@ -52,6 +58,10 @@ Scheme SocialHomeDisplay::scheme_() const {
   // last board's flag holds until the next board; without a board (setup,
   // first boot) it is day. The settings sheet over the night board is not
   // the board: it follows the mode.
+  // The lock screen has its own flag (the 423 body's is_night) and draws
+  // with the night palette then, as the tablet's `.dash-locked.dash-night`.
+  if (this->mode_ == Mode::LOCKED && !this->building_overlay_)
+    return scheme_for(this->theme_.mode, this->lock_.is_night, this->lock_.is_night);
   const bool night = this->board_ != nullptr && this->board_->header.is_night;
   const bool night_board = this->mode_ == Mode::RUNNING && night && !this->building_overlay_;
   return scheme_for(this->theme_.mode, night, night_board);
