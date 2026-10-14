@@ -454,6 +454,7 @@ void SocialHomeDisplay::on_forget_(lv_event_t *event) {
   auto *self = static_cast<SocialHomeDisplay *>(lv_event_get_user_data(event));
   if (self->confirm_ != nullptr)
     return;
+  self->building_overlay_ = true;
   const Palette &p = self->palette_();
   lv_obj_t *dialog = self->card_(self->settings_);
   self->confirm_ = dialog;
@@ -470,6 +471,7 @@ void SocialHomeDisplay::on_forget_(lv_event_t *event) {
   lv_obj_set_style_bg_color(yes, lv_color_hex(p.error_text), LV_PART_MAIN);
   // Cancel carries no user data; find self through the dialog.
   lv_obj_set_user_data(actions, self);
+  self->building_overlay_ = false;
 }
 
 void SocialHomeDisplay::on_forget_confirm_(lv_event_t *event) {
@@ -491,6 +493,7 @@ void SocialHomeDisplay::on_forget_confirm_(lv_event_t *event) {
 void SocialHomeDisplay::open_settings_() {
   if (this->settings_ != nullptr)
     return;
+  this->building_overlay_ = true;
   const Palette &p = this->palette_();
   lv_obj_t *veil = lv_obj_create(lv_layer_top());
   lv_obj_remove_style_all(veil);
@@ -528,6 +531,7 @@ void SocialHomeDisplay::open_settings_() {
     lv_obj_set_style_text_color(label, lv_color_hex(p.error_text), LV_PART_MAIN);
   }
   this->button_(actions, this->str_("close"), true, SocialHomeDisplay::on_settings_close_, this);
+  this->building_overlay_ = false;
 }
 
 void SocialHomeDisplay::close_settings_() {

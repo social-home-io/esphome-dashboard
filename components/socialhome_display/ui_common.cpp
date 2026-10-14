@@ -45,13 +45,19 @@ const lv_font_t *SocialHomeDisplay::font_(FontRole role) const {
   return f->get_lv_font();
 }
 
-const Palette &SocialHomeDisplay::palette_() const {
-  if (this->mode_ == Mode::RUNNING && this->board_ != nullptr && this->board_->header.is_night)
-    return this->theme_.night;
-  if (this->theme_.mode == "dark")
-    return this->theme_.dark;
-  return this->theme_.light;
+Scheme SocialHomeDisplay::scheme_() const {
+  // The server's flag is the one source of "night": a new board that flips
+  // it re-renders the panel (render_ asks again), so the switch at the
+  // window's edges needs no clock of its own. While locked or offline the
+  // last board's flag holds until the next board; without a board (setup,
+  // first boot) it is day. The settings sheet over the night board is not
+  // the board: it follows the mode.
+  const bool night = this->board_ != nullptr && this->board_->header.is_night;
+  const bool night_board = this->mode_ == Mode::RUNNING && night && !this->building_overlay_;
+  return scheme_for(this->theme_.mode, night, night_board);
 }
+
+const Palette &SocialHomeDisplay::palette_() const { return this->theme_.palette(this->scheme_()); }
 
 lv_obj_t *SocialHomeDisplay::box_(lv_obj_t *parent) {
   lv_obj_t *obj = lv_obj_create(parent);
@@ -523,24 +529,31 @@ void SocialHomeDisplay::build_frame_(lv_obj_t *screen) {
   this->main_scroll_ = main;
   if (this->offline_)
     this->build_offline_(main);
+  // At night the tabs stay hidden, woken or not (the browser's
+  // `.dash-night .dash-tabs`): the server bounces every tab but Overview.
+  const bool tabs = !b.header.is_night;
   switch (b.kind) {
     case BoardKind::OVERVIEW:
-      this->build_tabs_(main);
+      if (tabs)
+        this->build_tabs_(main);
       this->build_alerts_(main, b.header.alerts);
       this->build_overview_(main);
       break;
     case BoardKind::MESSAGES:
-      this->build_tabs_(main);
+      if (tabs)
+        this->build_tabs_(main);
       this->build_alerts_(main, b.header.alerts);
       this->build_messages_tab_(main);
       break;
     case BoardKind::NOTES:
-      this->build_tabs_(main);
+      if (tabs)
+        this->build_tabs_(main);
       this->build_alerts_(main, b.header.alerts);
       this->build_notes_tab_(main);
       break;
     case BoardKind::MAP:
-      this->build_tabs_(main);
+      if (tabs)
+        this->build_tabs_(main);
       this->build_alerts_(main, b.header.alerts);
       this->build_map_tab_(main);
       break;

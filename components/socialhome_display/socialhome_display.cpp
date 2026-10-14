@@ -896,7 +896,7 @@ std::string SocialHomeDisplay::map_path_() const {
   const int w = std::clamp(main - this->m_.map_list_width() - this->m_.gap(), 200, 1920);
   const int h = std::clamp(this->m_.map_height(), 200, 1200);
   return image.url + "?w=" + std::to_string(w) + "&h=" + std::to_string(h) +
-         "&scheme=" + (this->theme_.mode == "dark" ? "dark" : "light");
+         "&scheme=" + (this->scheme_() == Scheme::LIGHT ? "light" : "dark");
 }
 
 void SocialHomeDisplay::tick_map_() {

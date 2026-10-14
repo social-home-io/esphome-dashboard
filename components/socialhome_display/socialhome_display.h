@@ -167,6 +167,7 @@ class SocialHomeDisplay : public Component {
 
   // ---- widgets (ui_common.cpp)
   const lv_font_t *font_(FontRole role) const;
+  Scheme scheme_() const;
   const Palette &palette_() const;
   lv_obj_t *box_(lv_obj_t *parent);
   lv_obj_t *column_(lv_obj_t *parent, int gap);
@@ -344,6 +345,8 @@ class SocialHomeDisplay : public Component {
   std::string offline_since_;
   std::set<std::string> dismissed_;
   bool night_peek_{false};
+  /// True while the settings sheet (an overlay, not the board) is built.
+  bool building_overlay_{false};
   bool screen_off_{false};
   float last_brightness_{-1.0f};
   std::string last_minute_;
