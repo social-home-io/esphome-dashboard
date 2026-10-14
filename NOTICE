@@ -1,0 +1,17 @@
+Social Home ESPHome dashboard
+Copyright the Social Home contributors. Sources: Mozilla Public License 2.0
+(see LICENSE). Compiled firmware: GNU GPL v3 (it links ESPHome).
+
+The firmware draws, embeds or links the following third-party works:
+
+- Twemoji graphics, (c) Twitter, Inc and other contributors, (c) jdecked and
+  other contributors, licensed CC-BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/). Served to the panel by
+  Social Home. https://github.com/jdecked/twemoji
+- Roboto, (c) The Roboto Project Authors, licensed under the SIL Open Font
+  License 1.1 (https://openfontlicense.org). Embedded from Google Fonts.
+- ESPHome, GNU GPL v3 (C++ runtime). https://esphome.io
+- LVGL, MIT License. https://lvgl.io
+- Mbed TLS (part of ESP-IDF), Apache License 2.0.
+- GSL3670 touch controller configuration from esphome-libs/gsl3670-firmware,
+  Apache License 2.0.
