@@ -118,6 +118,8 @@ void SocialHomeDisplay::build_analog_clock_(lv_obj_t *parent, const AnalogClock 
 
 lv_obj_t *SocialHomeDisplay::build_tile_(lv_obj_t *parent, const Tile &tile, int size) {
   const Palette &p = this->palette_();
+  // Past and cancelled tiles fade only their picture (tile_style).
+  const TileStyle style = tile_style(tile, p);
   lv_obj_t *t = this->column_(parent, this->m_.px(2));
   lv_obj_set_flex_align(t, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_min_width(t, size, LV_PART_MAIN);
@@ -128,23 +130,26 @@ lv_obj_t *SocialHomeDisplay::build_tile_(lv_obj_t *parent, const Tile &tile, int
   lv_obj_set_style_radius(t, this->m_.px(12), LV_PART_MAIN);
   lv_obj_set_style_border_color(t, lv_color_hex(tile.current ? p.accent : p.border), LV_PART_MAIN);
   lv_obj_set_style_border_width(t, tile.current ? this->m_.px(3) : std::max(1, this->m_.px(2)), LV_PART_MAIN);
-  // The colour strip along the bottom, as on the tablet.
-  lv_obj_set_style_shadow_color(t, lv_color_hex(tile.color.or_else(p.border)), LV_PART_MAIN);
+  // The colour strip along the bottom, as on the tablet: a hard shadow
+  // under the tile. LVGL draws no shadow at all with a width of 0, so the
+  // narrowest blur (1 px) keeps the edge sharp.
+  lv_obj_set_style_shadow_color(t, lv_color_hex(style.strip), LV_PART_MAIN);
   lv_obj_set_style_shadow_offset_y(t, this->m_.px(5), LV_PART_MAIN);
-  lv_obj_set_style_shadow_width(t, 0, LV_PART_MAIN);
+  lv_obj_set_style_shadow_width(t, 1, LV_PART_MAIN);
   lv_obj_set_style_shadow_spread(t, 0, LV_PART_MAIN);
   lv_obj_set_style_shadow_opa(t, LV_OPA_COVER, LV_PART_MAIN);
-  if (!tile.icon.empty())
-    this->emoji_(t, tile.icon, size * 52 / 100);
+  if (!tile.icon.empty()) {
+    lv_obj_t *icon = this->emoji_(t, tile.icon, size * 52 / 100);
+    if (style.emoji_opa != OPA_FULL)
+      lv_obj_set_style_opa(icon, style.emoji_opa, LV_PART_MAIN);
+  }
   if (!tile.caption.empty()) {
-    lv_obj_t *caption = this->inline_(t, tile.caption, FontRole::SMALL, p.muted, size * 2);
-    if (tile.cancelled) {
+    lv_obj_t *caption = this->inline_(t, tile.caption, FontRole::SMALL, style.caption_ink, size * 2);
+    if (style.strike) {
       for (uint32_t k = 0; k < lv_obj_get_child_count(caption); k++)
         lv_obj_set_style_text_decor(lv_obj_get_child(caption, k), LV_TEXT_DECOR_STRIKETHROUGH, LV_PART_MAIN);
     }
   }
-  if (tile.past || tile.cancelled)
-    lv_obj_set_style_opa(t, LV_OPA_60, LV_PART_MAIN);
   return t;
 }
 
@@ -447,16 +452,19 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
       lv_obj_set_style_border_color(col, lv_color_hex(p.accent), LV_PART_MAIN);
       lv_obj_set_style_border_width(col, this->m_.px(3), LV_PART_MAIN);
     }
-    this->emoji_(col, part.icon, this->m_.px(44));
+    // A past part fades only its icon; its tiles fade their own pictures.
+    lv_obj_t *part_icon = this->emoji_(col, part.icon, this->m_.px(44));
+    if (part.state == "past")
+      lv_obj_set_style_opa(part_icon, OPA_PAST_PICTURE, LV_PART_MAIN);
     lv_obj_t *tiles = this->row_(col, this->m_.px(8));
     lv_obj_set_width(tiles, LV_PCT(100));
     lv_obj_set_flex_flow(tiles, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_flex_align(tiles, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_row(tiles, this->m_.px(14), LV_PART_MAIN);
+    // Room for the last row's colour strip, drawn under each tile.
+    lv_obj_set_style_pad_bottom(tiles, this->m_.px(6), LV_PART_MAIN);
     for (const auto &t : part.tiles)
       this->build_tile_(tiles, t, tile);
-    if (part.state == "past")
-      lv_obj_set_style_opa(col, LV_OPA_70, LV_PART_MAIN);
   }
 
   // Tomorrow · My jobs.

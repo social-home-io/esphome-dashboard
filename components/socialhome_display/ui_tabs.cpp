@@ -171,6 +171,9 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
         frame, lv_color_hex(person != nullptr ? person->color.or_else(p.border) : p.border), LV_PART_MAIN);
     lv_obj_t *avatar = this->avatar_(frame, spot.person, face - this->m_.px(12));
     lv_obj_center(avatar);
+    // A stale spot fades its face only; the words keep their contrast.
+    if (spot.stale)
+      lv_obj_set_style_opa(frame, OPA_STALE_FACE, LV_PART_MAIN);
     lv_obj_t *body = this->column_(item, this->m_.px(2));
     lv_obj_set_flex_grow(body, 1);
     this->text_(body, spot.name, FontRole::BODY_BOLD, p.text);
@@ -178,8 +181,6 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
     this->emoji_(where, spot.icon, this->m_.px(20));
     this->text_(where, spot.place, FontRole::BODY, p.text);
     this->text_(body, spot.when, FontRole::SMALL, p.muted);
-    if (spot.stale)
-      lv_obj_set_style_opa(item, LV_OPA_60, LV_PART_MAIN);
   }
 }
 

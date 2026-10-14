@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Layout maths and URL helpers.
 #include "check.h"
+#include "parser.h"
 #include "util.h"
 
 using namespace esphome::socialhome_display;
@@ -373,5 +374,130 @@ TEST(bar_label_always_the_better_ink) {
         CHECK(contrast_ratio(s.ink, s.fill) >= contrast_ratio(other, s.fill));
       }
     }
+  }
+}
+
+namespace {
+
+/// The three palettes the panel draws with: the server's (theme.json) and
+/// the firmware's built-in defaults, which must agree.
+std::vector<Palette> palettes() {
+  std::string json = check::fixture("theme.json");
+  Theme served;
+  CHECK(parse_theme(json.data(), json.size(), served) == ParseResult::OK);
+  Theme builtin;
+  return {served.light, served.dark, served.night, builtin.light, builtin.dark, builtin.night};
+}
+
+AgendaRow agenda_row(bool past, Status status, bool colored) {
+  AgendaRow row;
+  row.past = past;
+  row.status = status;
+  if (colored)
+    row.color = Color::of(0xC44D72);
+  return row;
+}
+
+}  // namespace
+
+TEST(builtin_palettes_match_the_theme) {
+  // Social Home #933 moved the night muted ink #7d786f -> #817c73.
+  std::string json = check::fixture("theme.json");
+  Theme served;
+  CHECK(parse_theme(json.data(), json.size(), served) == ParseResult::OK);
+  Theme builtin;
+  CHECK_EQ(builtin.night.muted, served.night.muted);
+  CHECK_EQ(builtin.night.muted, 0x817C73u);
+  CHECK_EQ(builtin.dark.muted, served.dark.muted);
+  CHECK_EQ(builtin.light.muted, served.light.muted);
+}
+
+TEST(past_row_words_stay_readable) {
+  // Every word on a past or cancelled row is drawn at full strength in an
+  // ink that keeps 4.5:1 on what is actually behind it, in every palette.
+  for (const Palette &p : palettes()) {
+    for (bool past : {false, true}) {
+      for (Status status : {Status::NONE, Status::CANCELLED, Status::CHANGED}) {
+        for (bool colored : {false, true}) {
+          const RowStyle s = row_style(agenda_row(past, status, colored), p);
+          const uint32_t ground = s.fill ? s.fill_color : p.surface;
+          CHECK(contrast_ratio(s.time_ink, ground) >= 4.5);
+          CHECK(contrast_ratio(s.title_ink, ground) >= 4.5);
+          CHECK(contrast_ratio(s.meta_ink, ground) >= 4.5);
+        }
+      }
+    }
+  }
+}
+
+TEST(past_row_recedes_into_the_card) {
+  // The browser's .dash-row.dash-past: no fill, strip at half over the
+  // card (as a past timeline bar), emoji at 50 %, words in muted.
+  for (const Palette &p : palettes()) {
+    const RowStyle s = row_style(agenda_row(true, Status::NONE, true), p);
+    CHECK(!s.fill);
+    CHECK_EQ(s.strip, blend_rgb(0xC44D72, p.surface, 127));
+    CHECK_EQ(s.strip, bar_style(0xC44D72, false, 0, p.surface, false, true).fill);
+    CHECK_EQ(s.title_ink, p.muted);
+    CHECK_EQ(s.time_ink, p.muted);
+    CHECK_EQ(s.emoji_opa, OPA_PAST_ROW_EMOJI);
+    CHECK(!s.strike);
+    // No colour of its own: the plain border, as before.
+    CHECK_EQ(row_style(agenda_row(true, Status::NONE, false), p).strip, p.border);
+  }
+}
+
+TEST(upcoming_and_cancelled_rows_keep_their_strip) {
+  for (const Palette &p : palettes()) {
+    const RowStyle up = row_style(agenda_row(false, Status::NONE, true), p);
+    CHECK(up.fill);
+    CHECK_EQ(up.fill_color, p.bg);
+    CHECK_EQ(up.strip, 0xC44D72u);
+    CHECK_EQ(up.title_ink, p.text);
+    CHECK_EQ(up.emoji_opa, OPA_FULL);
+    // .dash-st-cancelled: struck through in muted, nothing faded.
+    const RowStyle cancelled = row_style(agenda_row(false, Status::CANCELLED, true), p);
+    CHECK(cancelled.fill);
+    CHECK(cancelled.strike);
+    CHECK_EQ(cancelled.title_ink, p.muted);
+    CHECK_EQ(cancelled.strip, 0xC44D72u);
+    CHECK_EQ(cancelled.emoji_opa, OPA_FULL);
+    // The current row sits on the card colour.
+    AgendaRow now = agenda_row(false, Status::NONE, true);
+    now.now = true;
+    CHECK_EQ(row_style(now, p).fill_color, p.surface);
+  }
+}
+
+TEST(past_row_faded_whole_was_unreadable) {
+  // Regression: the old LV_OPA_60 over the whole row (on the card) took the
+  // time under 4.5:1 in the light and night palettes.
+  std::string json = check::fixture("theme.json");
+  Theme t;
+  CHECK(parse_theme(json.data(), json.size(), t) == ParseResult::OK);
+  for (const Palette *p : {&t.light, &t.night}) {
+    const uint32_t ground = blend_rgb(p->bg, p->surface, 153);
+    CHECK(contrast_ratio(blend_rgb(p->muted, p->surface, 153), ground) < 4.5);
+  }
+}
+
+TEST(tiles_fade_only_their_picture) {
+  // The browser's .dash-pv-past / .dash-pv-cancelled: the emoji fades, the
+  // caption stays muted at full strength and the strip keeps its colour.
+  for (const Palette &p : palettes()) {
+    Tile tile;
+    tile.color = Color::of(0x3F7D57);
+    for (int state = 0; state < 4; state++) {
+      tile.past = state & 1;
+      tile.cancelled = state & 2;
+      const TileStyle s = tile_style(tile, p);
+      CHECK_EQ(s.caption_ink, p.muted);
+      CHECK(contrast_ratio(s.caption_ink, p.bg) >= 4.5);
+      CHECK_EQ(s.strip, 0x3F7D57u);
+      CHECK_EQ(s.strike, tile.cancelled);
+      const uint8_t want = tile.cancelled ? OPA_CANCELLED_PICTURE : tile.past ? OPA_PAST_PICTURE : OPA_FULL;
+      CHECK_EQ(s.emoji_opa, want);
+    }
+    CHECK_EQ(tile_style(Tile{}, p).strip, p.border);
   }
 }

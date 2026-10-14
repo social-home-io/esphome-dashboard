@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "model.h"
+
 namespace esphome::socialhome_display {
 
 /// Port the Social Home dashboard (and so the display API) listens on by default.
@@ -178,6 +180,45 @@ struct BarStyle {
 /// keeps a light label instead of the lane's dark ink faded into the dark.
 /// An unfaded bar keeps the lane's own `ink` (when the server sent one).
 BarStyle bar_style(uint32_t color, bool has_ink, uint32_t ink, uint32_t surface, bool school, bool past);
+
+/// How much of a picture (emoji, face) is left when it recedes, as the
+/// browser's `opacity` — which only ever sits on pictures, never on words.
+static constexpr uint8_t OPA_PAST_ROW_EMOJI = 127;     ///< .dash-row.dash-past emoji, 50 %
+static constexpr uint8_t OPA_PAST_PICTURE = 102;       ///< .dash-pv-past / past day part, 40 %
+static constexpr uint8_t OPA_CANCELLED_PICTURE = 153;  ///< .dash-pv-cancelled, 60 %
+static constexpr uint8_t OPA_STALE_FACE = 127;         ///< .dash-mp-stale face, 50 %
+static constexpr uint8_t OPA_FULL = 255;
+
+/// How a day-list row (the browser's `.dash-row`) is painted, on a card
+/// whose background is `p.surface`.
+struct RowStyle {
+  bool fill;            ///< the row draws its own background (else the card shows)
+  uint32_t fill_color;  ///< that background, when `fill`
+  uint32_t strip;       ///< the colour strip on the start side, as drawn
+  uint32_t time_ink;
+  uint32_t title_ink;
+  uint32_t meta_ink;
+  uint8_t emoji_opa;    ///< the title's emoji
+  bool strike;          ///< the title is struck through (cancelled)
+};
+
+/// A past row recedes into the card as on the tablet (Social Home #933): no
+/// fill of its own, the colour strip faded to half over the card (the same
+/// blend as a past timeline bar), the emoji faded — and every word in the
+/// palette's muted ink at full strength, which keeps 4.5:1 on the card in
+/// light, dark and night. A cancelled row is struck through in muted ink;
+/// nothing on it fades. The current row sits on the card colour.
+RowStyle row_style(const AgendaRow &row, const Palette &p);
+
+/// How a picture-view tile (the browser's `.dash-pv-tile`) is painted.
+struct TileStyle {
+  uint32_t caption_ink;  ///< always muted, never faded
+  uint32_t strip;        ///< the colour strip along the bottom
+  uint8_t emoji_opa;     ///< only the picture fades (past 40 %, cancelled 60 %)
+  bool strike;           ///< the caption is struck through (cancelled)
+};
+
+TileStyle tile_style(const Tile &tile, const Palette &p);
 
 /// An analog clock hand: end point for `deg` (0 = 12 o'clock, clockwise)
 /// on a dial centred at (cx, cy) with hand length `len`.

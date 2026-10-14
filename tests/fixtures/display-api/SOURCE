@@ -1,7 +1,7 @@
 # Pinned Social Home display API contract (schemas + fixtures).
 # Copied verbatim from social-home-io/socialhome docs/display-api/v1/ at the
-# merge of social-home-io/socialhome#930 (the Wi-Fi prompt and network list strings).
+# merge of social-home-io/socialhome#933 (night muted ink #817c73).
 # Update: bump SOCIALHOME_REF, run `python3 scripts/display_api_contract.py --update`,
 # then fix the parser / host tests until `tests/cpp` passes again.
 SOCIALHOME_REPO=social-home-io/socialhome
-SOCIALHOME_REF=7aad15e245d9c93e4ecbef4150a07b563517065e
+SOCIALHOME_REF=b44575a32c97a657bb528497b47bf281fd5e4d8c
