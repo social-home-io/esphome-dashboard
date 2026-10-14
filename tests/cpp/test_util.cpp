@@ -501,3 +501,48 @@ TEST(tiles_fade_only_their_picture) {
     CHECK_EQ(tile_style(Tile{}, p).strip, p.border);
   }
 }
+
+TEST(grayscale_matches_the_browser) {
+  // CSS grayscale(1): Rec. 709 luma of the sRGB values on every channel.
+  CHECK_EQ(grayscale(0xFFFFFF), 0xFFFFFFu);
+  CHECK_EQ(grayscale(0x000000), 0x000000u);
+  CHECK_EQ(grayscale(0x2F6F5E), 0x606060u);  // the light accent
+  CHECK_EQ(grayscale(0x6CC3A8), 0xAFAFAFu);  // the dark accent
+  CHECK_EQ(grayscale(0x00FF00), 0xB6B6B6u);
+}
+
+TEST(live_data_unchanged_while_online) {
+  for (const Palette &p : palettes()) {
+    const LiveStyle s = live_style(p, false);
+    CHECK(!s.stale);
+    CHECK_EQ(s.text, p.text);
+    CHECK_EQ(s.accent, p.accent);
+    CHECK_EQ(s.accent_ink, p.accent_text);
+    CHECK_EQ(s.picture_opa, OPA_FULL);
+    CHECK_EQ(s.mark(0xC44D72), 0xC44D72u);
+  }
+}
+
+TEST(offline_live_data_greys_but_stays_readable) {
+  // The browser's .dash-stale [data-live]: the colour drains, words keep
+  // 4.5:1 on the card and the page (never faded), only pictures fade.
+  for (const Palette &p : palettes()) {
+    const LiveStyle s = live_style(p, true);
+    CHECK(s.stale);
+    CHECK_EQ(s.text, p.muted);
+    CHECK(contrast_ratio(s.text, p.surface) >= 4.5);
+    CHECK(contrast_ratio(s.text, p.bg) >= 4.5);
+    // The "now" pill: grey, its label picked against the grey.
+    CHECK_EQ(s.accent, grayscale(p.accent));
+    CHECK(contrast_ratio(s.accent_ink, s.accent) >= 4.5);
+    CHECK_EQ(s.picture_opa, OPA_STALE_PICTURE);
+    CHECK_EQ(s.mark(0xC44D72), grayscale(0xC44D72));
+    const uint32_t g = s.mark(0xC44D72);
+    CHECK_EQ(g >> 16, g & 0xFF);
+    CHECK_EQ((g >> 8) & 0xFF, g & 0xFF);
+  }
+}
+
+TEST(offline_fades_pictures_like_the_browser) {
+  CHECK_EQ(static_cast<int>(OPA_STALE_PICTURE), 115);  // opacity: 0.45
+}

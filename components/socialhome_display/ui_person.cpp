@@ -28,6 +28,21 @@ struct Dial {
 
 void free_dial(lv_event_t *event) { delete static_cast<Dial *>(lv_event_get_user_data(event)); }
 
+/// LV_EVENT_REFR_EXT_DRAW_SIZE: the object draws (and lets its children
+/// draw) this many px past its edges.
+void overhang_ext(lv_event_t *event) {
+  lv_event_set_ext_draw_size(event, static_cast<int32_t>(reinterpret_cast<intptr_t>(lv_event_get_user_data(event))));
+}
+
+/// Let children of `obj` show up to `px` past its edges. LVGL 9 clips a
+/// child to its parent even with LV_OBJ_FLAG_OVERFLOW_VISIBLE, which only
+/// widens the clip by the parent's ext draw size (its shadow, outline …).
+void allow_overhang(lv_obj_t *obj, int px) {
+  lv_obj_add_flag(obj, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+  lv_obj_add_event_cb(obj, overhang_ext, LV_EVENT_REFR_EXT_DRAW_SIZE, reinterpret_cast<void *>(static_cast<intptr_t>(px)));
+  lv_obj_refresh_ext_draw_size(obj);
+}
+
 void draw_dial(lv_event_t *event) {
   auto *d = static_cast<Dial *>(lv_event_get_user_data(event));
   lv_obj_t *obj = lv_event_get_current_target_obj(event);
@@ -106,7 +121,9 @@ void SocialHomeDisplay::build_analog_clock_(lv_obj_t *parent, const AnalogClock 
   d->minute_deg = clock.minute_deg;
   d->ink = 0x1F1D1A;
   d->tick = 0x5F5A52;
-  if (clock.wedge.has_value()) {
+  // The time-timer wedge counts down to NEXT: no longer true offline (the
+  // browser's data-rel), so the dial shows only the time.
+  if (clock.wedge.has_value() && !this->offline_) {
     d->wedge = true;
     d->wedge_full = clock.wedge->full;
     d->wedge_minutes = clock.wedge->minutes;
@@ -128,7 +145,8 @@ lv_obj_t *SocialHomeDisplay::build_tile_(lv_obj_t *parent, const Tile &tile, int
   lv_obj_set_style_bg_color(t, lv_color_hex(p.bg), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(t, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_radius(t, this->m_.px(12), LV_PART_MAIN);
-  lv_obj_set_style_border_color(t, lv_color_hex(tile.current ? p.accent : p.border), LV_PART_MAIN);
+  // The current tile is live data: grey, its picture faded, offline.
+  lv_obj_set_style_border_color(t, lv_color_hex(tile.current ? this->live_().accent : p.border), LV_PART_MAIN);
   lv_obj_set_style_border_width(t, tile.current ? this->m_.px(3) : std::max(1, this->m_.px(2)), LV_PART_MAIN);
   // The colour strip along the bottom, as on the tablet: a hard shadow
   // under the tile. LVGL draws no shadow at all with a width of 0, so the
@@ -142,6 +160,8 @@ lv_obj_t *SocialHomeDisplay::build_tile_(lv_obj_t *parent, const Tile &tile, int
     lv_obj_t *icon = this->emoji_(t, tile.icon, size * 52 / 100);
     if (style.emoji_opa != OPA_FULL)
       lv_obj_set_style_opa(icon, style.emoji_opa, LV_PART_MAIN);
+    if (tile.current)
+      this->live_picture_(icon);
   }
   if (!tile.caption.empty()) {
     lv_obj_t *caption = this->inline_(t, tile.caption, FontRole::SMALL, style.caption_ink, size * 2);
@@ -193,9 +213,10 @@ void SocialHomeDisplay::build_person_(lv_obj_t *parent) {
     this->long_press_settings_(clock);
   } else {
     if (who.where.has_value()) {
+      // Where they are is live data: muted words, faded icon offline.
       lv_obj_t *where = this->row_(head, this->m_.px(6));
-      this->emoji_(where, who.where->icon, this->m_.emoji_sm());
-      this->text_(where, who.where->label, FontRole::LARGE, p.text);
+      this->live_picture_(this->emoji_(where, who.where->icon, this->m_.emoji_sm()));
+      this->text_(where, who.where->label, FontRole::LARGE, this->live_().text);
     }
     this->clock_label_(head, FontRole::DISPLAY, p.text);
   }
@@ -213,6 +234,9 @@ void SocialHomeDisplay::build_reader_(lv_obj_t *parent) {
   if (!this->board_->reader.has_value())
     return;
   const Reader &r = *this->board_->reader;
+  // NOW is live data: offline its frame greys, its words go muted and its
+  // emoji fades (NEXT keeps its colour; only its "in 34 min" goes).
+  const LiveStyle live = this->live_();
   const int width = main_width(this->m_, this->board_->header.rail.shown);
   const int gap = this->m_.gap();
 
@@ -223,14 +247,15 @@ void SocialHomeDisplay::build_reader_(lv_obj_t *parent) {
     const int n = (r.now.has_value() ? 1 : 0) + (r.next.has_value() ? 1 : 0);
     const int w = (width - gap * (n - 1)) / n;
     auto shell = [&](Color color, bool now) {
+      const uint32_t frame = now ? live.mark(color.or_else(p.accent)) : color.or_else(p.accent);
       lv_obj_t *card = this->card_(row);
       lv_obj_set_width(card, w);
       lv_obj_set_style_pad_row(card, this->m_.px(6), LV_PART_MAIN);
       lv_obj_set_style_border_side(card, LV_BORDER_SIDE_LEFT, LV_PART_MAIN);
       lv_obj_set_style_border_width(card, this->m_.px(8), LV_PART_MAIN);
-      lv_obj_set_style_border_color(card, lv_color_hex(color.or_else(p.accent)), LV_PART_MAIN);
+      lv_obj_set_style_border_color(card, lv_color_hex(frame), LV_PART_MAIN);
       if (now) {
-        lv_obj_set_style_outline_color(card, lv_color_hex(color.or_else(p.accent)), LV_PART_MAIN);
+        lv_obj_set_style_outline_color(card, lv_color_hex(frame), LV_PART_MAIN);
         lv_obj_set_style_outline_width(card, this->m_.px(3), LV_PART_MAIN);
       }
       return card;
@@ -240,8 +265,8 @@ void SocialHomeDisplay::build_reader_(lv_obj_t *parent) {
       this->caps_(card, r.now->label, p.muted);
       lv_obj_t *line = this->row_(card, this->m_.px(10));
       if (!r.now->icon.empty())
-        this->emoji_(line, r.now->icon, this->m_.emoji_md());
-      this->text_(line, r.now->title, FontRole::TITLE, p.text);
+        this->live_picture_(this->emoji_(line, r.now->icon, this->m_.emoji_md()));
+      this->text_(line, r.now->title, FontRole::TITLE, live.text);
       if (!r.now->meta.empty())
         this->text_(line, "\xC2\xB7 " + r.now->meta, FontRole::BODY, p.muted);
       this->text_(card, r.now->until, FontRole::LARGE, p.muted);
@@ -255,7 +280,9 @@ void SocialHomeDisplay::build_reader_(lv_obj_t *parent) {
       this->text_(line, r.next->title, FontRole::TITLE, p.text);
       if (!r.next->meta.empty())
         this->text_(line, "\xC2\xB7 " + r.next->meta, FontRole::BODY, p.muted);
-      this->text_(card, r.next->time + " \xC2\xB7 " + r.next->rel, FontRole::LARGE, p.muted);
+      // "· in 34 min" is no longer true offline (the browser's data-rel).
+      const bool rel = !r.next->rel.empty() && !live.stale;
+      this->text_(card, rel ? r.next->time + " \xC2\xB7 " + r.next->rel : r.next->time, FontRole::LARGE, p.muted);
     }
   }
 
@@ -301,6 +328,7 @@ void SocialHomeDisplay::build_reader_(lv_obj_t *parent) {
 void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
   const Palette &p = this->palette_();
   const Picture &pv = *this->board_->picture;
+  const LiveStyle live = this->live_();
   const int gap = this->m_.gap();
   // The 💬 on a face (the Twemoji picture: a pale bubble with three dots),
   // on a round badge so it reads on any face; a new message's badge is
@@ -363,12 +391,18 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
       lv_obj_set_style_bg_opa(t, LV_OPA_COVER, LV_PART_MAIN);
       lv_obj_set_style_radius(t, this->m_.px(20), LV_PART_MAIN);
       lv_obj_set_style_border_width(t, next ? this->m_.px(3) : this->m_.px(9), LV_PART_MAIN);
-      lv_obj_set_style_border_color(t, lv_color_hex(next ? tile.color.or_else(p.accent) : p.border), LV_PART_MAIN);
+      // NOW is live data: offline its frame greys and its picture fades.
+      lv_obj_set_style_border_color(t, lv_color_hex(next ? tile.color.or_else(p.accent) : live.mark(p.border)),
+                                    LV_PART_MAIN);
       this->caps_(t, label, p.muted);
-      if (!tile.icon.empty())
-        this->emoji_(t, tile.icon, this->m_.px(84));
+      if (!tile.icon.empty()) {
+        lv_obj_t *icon = this->emoji_(t, tile.icon, this->m_.px(84));
+        if (!next)
+          this->live_picture_(icon);
+      }
       this->inline_(t, tile.caption, FontRole::BODY, p.muted, this->m_.px(176));
-      if (next && pv.next_pie.has_value()) {
+      // The pie counts down to NEXT: hidden offline (the browser's data-rel).
+      if (next && pv.next_pie.has_value() && !live.stale) {
         lv_obj_t *pie = this->box_(t);
         int d = this->m_.px(42);
         lv_obj_set_size(pie, d, d);
@@ -485,35 +519,54 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
     lv_obj_t *card = this->section_card_(row, pv.jobs_label);
     lv_obj_t *tiles = this->row_(card, this->m_.px(12));
     lv_obj_set_style_pad_bottom(tiles, this->m_.px(6), LV_PART_MAIN);
+    // The ☐ / ✓ overhangs each tile's top corner, as the browser's
+    // .dash-pv-check (34 px, 10 px over the padding box: 8 px past the 2 px
+    // border). The tile and the row let it out into the card's padding —
+    // without that LVGL cut its top and end at the row's edges.
+    const int over = this->m_.px(8);
+    const int tile_border = std::max(1, this->m_.px(2));
+    allow_overhang(tiles, over);
     for (const auto &job : pv.jobs) {
       Tile t;
       t.icon = job.icon;
       t.caption = job.caption;
       lv_obj_t *jt = this->build_tile_(tiles, t, tile);
-      lv_obj_add_flag(jt, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+      allow_overhang(jt, over);
+      // Open: a ☐ on the card colour in a border ring; done: a ✓ on accent.
+      // Aligned in the tile's content box, so its padding and border count.
       lv_obj_t *mark = this->box_(jt);
-      int d = this->m_.px(32);
+      const int d = this->m_.px(34);
       lv_obj_set_size(mark, d, d);
       lv_obj_add_flag(mark, LV_OBJ_FLAG_IGNORE_LAYOUT);
-      lv_obj_align(mark, LV_ALIGN_TOP_RIGHT, this->m_.px(14), -this->m_.px(12));
-      lv_obj_set_style_radius(mark, job.done ? LV_RADIUS_CIRCLE : this->m_.px(4), LV_PART_MAIN);
+      lv_obj_align(mark, LV_ALIGN_TOP_RIGHT, this->m_.px(10) + tile_border + over,
+                   -(this->m_.px(6) + tile_border + over));
+      lv_obj_set_style_radius(mark, LV_RADIUS_CIRCLE, LV_PART_MAIN);
       lv_obj_set_style_bg_color(mark, lv_color_hex(job.done ? p.accent : p.surface), LV_PART_MAIN);
       lv_obj_set_style_bg_opa(mark, LV_OPA_COVER, LV_PART_MAIN);
-      lv_obj_set_style_border_color(mark, lv_color_hex(job.done ? p.surface : p.text), LV_PART_MAIN);
+      lv_obj_set_style_border_color(mark, lv_color_hex(job.done ? p.accent : p.border), LV_PART_MAIN);
       lv_obj_set_style_border_width(mark, std::max(1, this->m_.px(2)), LV_PART_MAIN);
       if (job.done) {
         lv_obj_t *check = this->check_mark_(mark, d * 6 / 10, p.accent_text, std::max(2, this->m_.px(3)));
         lv_obj_center(check);
+      } else {
+        lv_obj_t *box = this->box_(mark);
+        const int b = d * 44 / 100;
+        lv_obj_set_size(box, b, b);
+        lv_obj_set_style_border_color(box, lv_color_hex(p.text), LV_PART_MAIN);
+        lv_obj_set_style_border_width(box, std::max(1, this->m_.px(2)), LV_PART_MAIN);
+        lv_obj_set_style_radius(box, this->m_.px(2), LV_PART_MAIN);
+        lv_obj_center(box);
       }
     }
   }
   if (pv.where.has_value()) {
     lv_obj_t *card = this->section_card_(row, pv.where->label);
     lv_obj_t *line = this->row_(card, this->m_.px(10));
+    // Live data: offline the faces and icons fade.
     auto group = [&](const PresenceGroup &g) {
-      this->emoji_(line, g.icon, this->m_.px(40));
+      this->live_picture_(this->emoji_(line, g.icon, this->m_.px(40)));
       for (const auto &id : g.people)
-        this->avatar_(line, id, this->m_.px(56));
+        this->live_picture_(this->avatar_(line, id, this->m_.px(56)));
     };
     if (pv.where->home.has_value() && !pv.where->home->people.empty())
       group(*pv.where->home);

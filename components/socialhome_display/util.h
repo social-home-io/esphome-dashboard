@@ -220,6 +220,38 @@ struct TileStyle {
 
 TileStyle tile_style(const Tile &tile, const Palette &p);
 
+/// CSS `filter: grayscale(1)` of one 0xRRGGBB colour: the Rec. 709 luma of
+/// the sRGB values on every channel, as the browser computes it.
+uint32_t grayscale(uint32_t rgb);
+
+/// How a picture of live data fades while the panel is offline: the
+/// browser's `.dash-stale [data-live] [aria-hidden="true"]`, 45 %.
+static constexpr uint8_t OPA_STALE_PICTURE = 115;
+
+/// How "live" data is painted — what the browser marks `data-live`: where
+/// people are (Overview's who's home, a reader's whereabouts, a picture
+/// view's who's home), the timeline's "now" mark and line, the current row,
+/// a reader's NOW card and a picture view's NOW card and current tile.
+///
+/// While the panel can't reach Social Home (`stale`, the browser's
+/// `.dash-stale`) that data may no longer be true, so its colour drains:
+/// words in the palette's muted ink at full strength (4.5:1 on the card and
+/// the page in light, dark and night), accent marks and colour frames in
+/// grey with the label picked against that grey, and only the pictures
+/// (faces, emoji, the now line) fade. Not stale: everything as given.
+struct LiveStyle {
+  bool stale{false};
+  uint32_t text{0};     ///< words otherwise drawn in `text`
+  uint32_t accent{0};   ///< a mark otherwise drawn in `accent` (now pill / line, frames)
+  uint32_t accent_ink{0};  ///< the label on such a mark
+  uint8_t picture_opa{OPA_FULL};  ///< faces, emoji, the now line
+
+  /// A frame or strip in `color` (a lane's or person's colour).
+  uint32_t mark(uint32_t color) const { return stale ? grayscale(color) : color; }
+};
+
+LiveStyle live_style(const Palette &p, bool stale);
+
 /// An analog clock hand: end point for `deg` (0 = 12 o'clock, clockwise)
 /// on a dial centred at (cx, cy) with hand length `len`.
 void hand_end(float deg, int cx, int cy, int len, int *x, int *y);

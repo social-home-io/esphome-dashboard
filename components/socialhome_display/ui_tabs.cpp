@@ -53,7 +53,9 @@ void SocialHomeDisplay::build_messages_tab_(lv_obj_t *parent) {
       this->text_(head, msg.name, FontRole::LABEL, p.text);
       if (msg.is_new)
         this->pill_(head, upper(this->str_("new")), p.accent, p.accent_text, FontRole::LABEL);
-      this->text_(head, msg.time.empty() ? msg.when : msg.time, FontRole::SMALL, p.muted);
+      // A new message's "11 min ago" is no longer true offline (data-rel).
+      if (!msg.time.empty() || !(msg.is_new && this->offline_))
+        this->text_(head, msg.time.empty() ? msg.when : msg.time, FontRole::SMALL, p.muted);
       lv_obj_t *line = this->row_(body, this->m_.px(8));
       lv_obj_set_width(line, LV_PCT(100));
       if (!msg.icon.empty())
@@ -180,7 +182,9 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
     lv_obj_t *where = this->row_(body, this->m_.px(6));
     this->emoji_(where, spot.icon, this->m_.px(20));
     this->text_(where, spot.place, FontRole::BODY, p.text);
-    this->text_(body, spot.when, FontRole::SMALL, p.muted);
+    // "5 min ago" is no longer true offline (the browser's data-rel).
+    if (!this->offline_)
+      this->text_(body, spot.when, FontRole::SMALL, p.muted);
   }
 }
 

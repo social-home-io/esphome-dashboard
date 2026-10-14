@@ -494,6 +494,22 @@ TileStyle tile_style(const Tile &tile, const Palette &p) {
   return style;
 }
 
+uint32_t grayscale(uint32_t rgb) {
+  const double r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+  const auto y = static_cast<uint32_t>(std::lround(std::clamp(0.2126 * r + 0.7152 * g + 0.0722 * b, 0.0, 255.0)));
+  return (y << 16) | (y << 8) | y;
+}
+
+LiveStyle live_style(const Palette &p, bool stale) {
+  LiveStyle style;
+  style.stale = stale;
+  style.text = stale ? p.muted : p.text;
+  style.accent = stale ? grayscale(p.accent) : p.accent;
+  style.accent_ink = stale ? ink_on(style.accent) : p.accent_text;
+  style.picture_opa = stale ? OPA_STALE_PICTURE : OPA_FULL;
+  return style;
+}
+
 void hand_end(float deg, int cx, int cy, int len, int *x, int *y) {
   float rad = deg * static_cast<float>(M_PI) / 180.0f;
   *x = cx + static_cast<int>(std::lround(std::sin(rad) * len));
