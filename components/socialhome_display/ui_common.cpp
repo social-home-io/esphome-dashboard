@@ -59,6 +59,21 @@ Scheme SocialHomeDisplay::scheme_() const {
 
 const Palette &SocialHomeDisplay::palette_() const { return this->theme_.palette(this->scheme_()); }
 
+LiveStyle SocialHomeDisplay::live_() const { return live_style(this->palette_(), this->offline_); }
+
+lv_obj_t *SocialHomeDisplay::live_picture_(lv_obj_t *obj) {
+  if (!this->offline_)
+    return obj;
+  // A face is a circle with its initials under the photo: plain opacity
+  // fades each part on its own, so the initials would show through the
+  // photo. Faded as one layer it looks like the browser's faded face.
+  if (lv_obj_get_child_count(obj) > 0)
+    lv_obj_set_style_opa_layered(obj, OPA_STALE_PICTURE, LV_PART_MAIN);
+  else
+    lv_obj_set_style_opa(obj, OPA_STALE_PICTURE, LV_PART_MAIN);
+  return obj;
+}
+
 lv_obj_t *SocialHomeDisplay::box_(lv_obj_t *parent) {
   lv_obj_t *obj = lv_obj_create(parent);
   lv_obj_remove_style_all(obj);
@@ -402,7 +417,8 @@ lv_obj_t *SocialHomeDisplay::agenda_row_(lv_obj_t *parent, const AgendaRow &row,
   }
   lv_obj_set_style_radius(item, this->m_.px(8), LV_PART_MAIN);
   if (row.now) {
-    lv_obj_set_style_outline_color(item, lv_color_hex(p.accent), LV_PART_MAIN);
+    // The browser's "now" tag: live data, grey while offline.
+    lv_obj_set_style_outline_color(item, lv_color_hex(this->live_().accent), LV_PART_MAIN);
     lv_obj_set_style_outline_width(item, this->m_.px(2), LV_PART_MAIN);
   }
   // The colour strip on the start side.
@@ -491,7 +507,9 @@ lv_obj_t *SocialHomeDisplay::message_row_(lv_obj_t *parent, const Message &messa
   lv_obj_t *meta = this->row_(item, this->m_.px(8));
   if (message.is_new)
     this->pill_(meta, upper(this->str_("new")), p.accent, p.accent_text, FontRole::LABEL);
-  if (show_time)
+  // A new message's "11 min ago" is no longer true offline (the browser's
+  // data-rel); an older one shows its time of day.
+  if (show_time && !(message.is_new && this->offline_))
     this->text_(meta, message.when, FontRole::SMALL, p.muted);
   return item;
 }
@@ -769,7 +787,8 @@ void SocialHomeDisplay::build_alerts_(lv_obj_t *parent, const std::vector<Mentio
     lv_obj_t *head = this->row_(body, this->m_.px(10));
     this->caps_(head, alert.label, p.accent);
     this->text_(head, alert.name, FontRole::LABEL, p.text);
-    this->text_(head, alert.when, FontRole::SMALL, p.muted);
+    if (!this->offline_)  // "3 min ago" is no longer true offline
+      this->text_(head, alert.when, FontRole::SMALL, p.muted);
     this->rich_(body, alert.text, FontRole::BODY, p.text);
     if (alert.ack.has_value()) {
       lv_obj_t *button = this->button_(inner, this->str_("got_it"), true, SocialHomeDisplay::on_ack_,

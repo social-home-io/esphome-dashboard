@@ -35,11 +35,12 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
     lv_obj_t *who = this->column_(left, this->m_.px(8));
     lv_obj_set_style_pad_top(who, this->m_.px(16), LV_PART_MAIN);
     const int face = this->m_.px(44);
+    // Live data: offline the faces and icons fade, the zones stay muted.
     auto group = [&](const PresenceGroup &g) {
       lv_obj_t *line = this->row_(who, this->m_.px(8));
-      this->emoji_(line, g.icon, this->m_.emoji_md());
+      this->live_picture_(this->emoji_(line, g.icon, this->m_.emoji_md()));
       for (size_t k = 0; k < g.people.size(); k++) {
-        this->avatar_(line, g.people[k], face);
+        this->live_picture_(this->avatar_(line, g.people[k], face));
         if (k < g.zones.size() && !g.zones[k].empty())
           this->text_(line, g.zones[k], FontRole::BODY, p.muted);
       }
@@ -70,7 +71,8 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
     lv_obj_t *meta = this->row_(card, this->m_.px(10));
     for (const auto &id : n.people)
       this->avatar_(meta, id, this->m_.px(32));
-    if (!n.rel.empty())
+    // "in 34 min" is no longer true offline (the browser's data-rel).
+    if (!n.rel.empty() && !this->offline_)
       this->text_(meta, n.rel, FontRole::BODY, p.muted);
   }
   if (o.messages.has_value() && !o.messages->items.empty()) {
@@ -218,6 +220,8 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
 
 void SocialHomeDisplay::build_timeline_(lv_obj_t *parent, const Timeline &line) {
   const Palette &p = this->palette_();
+  // The "now" mark and line are live data: grey (the line faded) offline.
+  const LiveStyle live = this->live_();
   const int width = main_width(this->m_, this->board_->header.rail.shown);
   const int inner = width - 2 * this->m_.card_pad() - 2;
   const int name_w = this->m_.px(170);
@@ -237,7 +241,7 @@ void SocialHomeDisplay::build_timeline_(lv_obj_t *parent, const Timeline &line) 
     lv_obj_set_pos(label, x, this->m_.px(6));
   }
   if (line.now_x.has_value()) {
-    lv_obj_t *now = this->pill_(head, line.now_label, p.accent, p.accent_text, FontRole::LABEL);
+    lv_obj_t *now = this->pill_(head, line.now_label, live.accent, live.accent_ink, FontRole::LABEL);
     lv_obj_update_layout(now);
     lv_obj_set_pos(now, name_w + Metrics::pct(*line.now_x, track_w) - lv_obj_get_width(now) / 2, this->m_.px(4));
   }
@@ -300,8 +304,8 @@ void SocialHomeDisplay::build_timeline_(lv_obj_t *parent, const Timeline &line) 
       lv_obj_t *now = this->box_(track);
       lv_obj_set_size(now, std::max(2, this->m_.px(3)), height);
       lv_obj_set_pos(now, Metrics::pct(*line.now_x, track_w), 0);
-      lv_obj_set_style_bg_color(now, lv_color_hex(p.accent), LV_PART_MAIN);
-      lv_obj_set_style_bg_opa(now, LV_OPA_COVER, LV_PART_MAIN);
+      lv_obj_set_style_bg_color(now, lv_color_hex(live.accent), LV_PART_MAIN);
+      lv_obj_set_style_bg_opa(now, live.picture_opa, LV_PART_MAIN);
     }
   }
 }

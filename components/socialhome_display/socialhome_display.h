@@ -169,6 +169,10 @@ class SocialHomeDisplay : public Component {
   const lv_font_t *font_(FontRole role) const;
   Scheme scheme_() const;
   const Palette &palette_() const;
+  /// How live data is painted now: greyed while offline (live_style).
+  LiveStyle live_() const;
+  /// Fade a picture of live data (a face, an emoji) while offline.
+  lv_obj_t *live_picture_(lv_obj_t *obj);
   lv_obj_t *box_(lv_obj_t *parent);
   lv_obj_t *column_(lv_obj_t *parent, int gap);
   lv_obj_t *row_(lv_obj_t *parent, int gap);
