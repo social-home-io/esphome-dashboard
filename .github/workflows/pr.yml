@@ -52,8 +52,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      - name: SDL2 and OpenSSL headers
-        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libssl-dev
+      - name: SDL2, OpenSSL and Mbed TLS headers
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libssl-dev libmbedtls-dev
       - name: Install ESPHome ${{ env.ESPHOME_VERSION }}
         run: pip install "esphome==${ESPHOME_VERSION}"
       - name: Cache build

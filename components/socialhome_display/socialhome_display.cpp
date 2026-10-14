@@ -75,6 +75,7 @@ const std::string &SocialHomeDisplay::str_(const char *key) const {
       {"claim_disabled", "The household dashboard is turned off in Social Home."},
       {"claim_busy", "Too many tries, wait a moment and press Connect again."},
       {"claim_unreachable", "Can't reach Social Home at {host}."},
+      {"claim_sealed", "This connect request can't be opened on this panel. Press Connect in Social Home again."},
       {"ok", "OK"},
       {"unpaired", "This panel isn't paired any more. Pair it again in Admin \xE2\x80\xBA Dashboard."},
       {"change_server", "Change address"},
@@ -137,13 +138,16 @@ void SocialHomeDisplay::setup() {
   this->pref_token_ = global_preferences->make_preference<StoredText>(fnv1_hash("socialhome_display.token"), true);
   this->pref_display_ =
       global_preferences->make_preference<StoredText>(fnv1_hash("socialhome_display.display_id"), true);
+  this->pref_key_ = global_preferences->make_preference<StoredKey>(fnv1_hash("socialhome_display.panel_key"), true);
   this->load_state_();
+  this->load_panel_key_();
   char mac[MAC_ADDRESS_PRETTY_BUFFER_SIZE];
   this->mac_ = get_mac_address_pretty_into_buffer(mac);
 #ifdef USE_TEXT_SENSOR
   if (this->node_sensor_ != nullptr)
     this->node_sensor_->publish_state(App.get_name().str());
 #endif
+  this->publish_panel_key_();
   this->images_.set_factory([this](const std::string &path) { return this->request_(path); });
   this->map_.set_factory([this](const std::string &path) { return this->request_(path); });
   this->set_mode_(Mode::BOOT);
@@ -156,12 +160,14 @@ void SocialHomeDisplay::dump_config() {
                 "  Model: %s\n"
                 "  Screen: %dx%d (scale %.2f)\n"
                 "  MAC: %s\n"
+                "  Panel key: %s\n"
                 "  Server: %s\n"
                 "  Paired: %s\n"
                 "  Finds Social Home (mDNS): %s\n"
                 "  Poll interval: %" PRIu32 " ms",
                 FIRMWARE_VERSION, this->model_.c_str(), this->screen_width_, this->screen_height_, this->m_.scale,
-                this->mac_.c_str(), this->server_.empty() ? "(not set)" : this->server_.c_str(),
+                this->mac_.c_str(), this->panel_key_text_.empty() ? "(none)" : this->panel_key_text_.c_str(),
+                this->server_.empty() ? "(not set)" : this->server_.c_str(),
                 YESNO(!this->token_.empty()), YESNO(this->browser_.supported()), this->poll_interval_ms_);
 }
 
@@ -196,8 +202,60 @@ void SocialHomeDisplay::save_state_() {
   global_preferences->sync();
 }
 
+// ---- panel key ----------------------------------------------------------------
+//
+// The X25519 key Social Home seals Connect-from-Home-Assistant claims to.
+// Made once (the hardware RNG: Wi-Fi is up before this LATE component, so
+// the RNG has its RF entropy), kept in NVS, renewed on Forget server; a
+// factory reset wipes NVS, so the panel makes a new one at the next boot.
+// Only the public half leaves the panel ("Social Home key" sensor,
+// X-Display-Key on /pair/claim).
+
+void SocialHomeDisplay::load_panel_key_() {
+  StoredKey stored{};
+  if (this->pref_key_.load(&stored)) {
+    memcpy(this->panel_key_.private_key.data(), stored.private_key, PANEL_KEY_BYTES);
+    wipe_bytes(&stored, sizeof(stored));
+    if (x25519_public_key(this->panel_key_.private_key, this->panel_key_.public_key)) {
+      this->panel_key_text_ = panel_key_text(this->panel_key_.public_key);
+      return;
+    }
+    ESP_LOGW(TAG, "The stored panel key is unusable; making a new one");
+  }
+  this->renew_panel_key_();
+}
+
+void SocialHomeDisplay::renew_panel_key_() {
+  this->panel_key_.wipe();
+  this->panel_key_text_.clear();
+  if (!generate_panel_key(this->panel_key_)) {
+    // Connect from Home Assistant can't work without it; pairing codes still do.
+    ESP_LOGE(TAG, "Couldn't make a panel key");
+    this->panel_key_.wipe();
+    this->publish_panel_key_();
+    return;
+  }
+  StoredKey stored{};
+  memcpy(stored.private_key, this->panel_key_.private_key.data(), PANEL_KEY_BYTES);
+  this->pref_key_.save(&stored);
+  wipe_bytes(&stored, sizeof(stored));
+  global_preferences->sync();
+  this->panel_key_text_ = panel_key_text(this->panel_key_.public_key);
+  ESP_LOGI(TAG, "New panel key %s", this->panel_key_text_.c_str());
+  this->publish_panel_key_();
+}
+
+void SocialHomeDisplay::publish_panel_key_() {
+#ifdef USE_TEXT_SENSOR
+  if (this->key_sensor_ != nullptr)
+    this->key_sensor_->publish_state(this->panel_key_text_);
+#endif
+}
+
 void SocialHomeDisplay::forget_server() {
   ESP_LOGI(TAG, "Forgetting the server");
+  // A connect request sealed to the old key must not open any more.
+  this->renew_panel_key_();
   this->server_.clear();
   this->token_.clear();
   this->display_id_.clear();
@@ -398,17 +456,67 @@ void SocialHomeDisplay::handle_pairing_(HttpResponse &response) {
 // ---- Connect from Home Assistant ------------------------------------------------
 //
 // Social Home asks Home Assistant to run this panel's connect_social_home
-// action with its address and a one-time claim (single use, 10 min). The
-// claim travels through HA's recorder, so it is never logged here, and
-// neither is the token it buys.
+// action with its address and a one-time claim (single use, 10 min), sealed
+// to this panel's key: HA's recorder keeps the action data, so it only ever
+// sees ciphertext. Neither the sealed value, the claim nor the token it buys
+// is logged here.
 
-void SocialHomeDisplay::connect_from_home_assistant(const std::string &url, const std::string &claim) {
-  ESP_LOGI(TAG, "connect: claim received");
-  std::string base = normalize_server_url(url);
-  if (base.empty() || claim.empty()) {
-    ESP_LOGW(TAG, "connect: ignored (%s)", base.empty() ? "no usable server address" : "empty claim");
+void SocialHomeDisplay::connect_from_home_assistant(const std::string &sealed) {
+  ESP_LOGI(TAG, "connect: request received");
+  if (this->panel_key_text_.empty()) {
+    ESP_LOGW(TAG, "connect: refused (this panel has no key)");
+    this->refuse_claim_();
     return;
   }
+  OpenedClaim opened;
+  switch (open_sealed_claim(sealed, this->panel_key_, opened)) {
+    case SealResult::OK:
+      break;
+    case SealResult::UNSUPPORTED_SUITE:
+      ESP_LOGW(TAG, "connect: refused (sealed with a suite this firmware doesn't support)");
+      this->refuse_claim_();
+      return;
+    default:
+      ESP_LOGW(TAG, "connect: refused (the request didn't open with this panel's key)");
+      this->refuse_claim_();
+      return;
+  }
+  std::string base = normalize_server_url(opened.url);
+  if (base.empty() || opened.claim.empty()) {
+    ESP_LOGW(TAG, "connect: refused (%s)", base.empty() ? "no usable server address" : "empty claim");
+    this->refuse_claim_();
+    return;
+  }
+  this->claim_at_(base, opened.claim);
+}
+
+void SocialHomeDisplay::refuse_claim_() {
+  // One already being claimed carries on.
+  if (this->mode_ == Mode::CLAIMING && this->claim_request_ != 0)
+    return;
+  if (this->mode_ != Mode::CLAIMING) {
+    this->prev_server_ = this->token_.empty() ? std::string() : this->server_;
+    this->prev_token_ = this->token_;
+    this->prev_display_id_ = this->display_id_;
+  }
+  this->close_settings_();
+  this->api_.cancel_if([](const HttpRequest &) { return true; });
+  this->board_request_ = 0;
+  this->theme_request_ = 0;
+  this->pair_request_ = 0;
+  this->claim_request_ = 0;
+  this->claim_error_ = this->str_("claim_sealed");
+  if (this->prev_token_.empty()) {
+    // Unpaired: the address screen shows why.
+    this->finish_claim_();
+    return;
+  }
+  // Paired: the reason for a while, then back to the dashboard.
+  this->set_mode_(Mode::CLAIMING);
+  this->claim_until_ = millis() + CLAIM_ERROR_MS;
+}
+
+void SocialHomeDisplay::claim_at_(const std::string &base, const std::string &claim) {
   // A working pairing to go back to if the claim fails. A second connect
   // while one runs keeps the pairing saved by the first.
   if (this->mode_ != Mode::CLAIMING) {
@@ -430,9 +538,11 @@ void SocialHomeDisplay::connect_from_home_assistant(const std::string &url, cons
   // keeps its stored pairing until the claim succeeds.
   if (this->prev_token_.empty())
     this->save_state_();
-  ESP_LOGI(TAG, "connect: claiming at %s", base.c_str());
+  ESP_LOGI(TAG, "connect: claiming");
   HttpRequest request = this->request_(std::string(API) + "/pair/claim", false);
   request.method = "POST";
+  // Social Home checks it is the key it sealed the claim to.
+  request.headers.emplace_back("X-Display-Key", this->panel_key_text_);
   request.headers.emplace_back("Content-Type", "application/json");
   request.body = claim_request_body(claim, this->model_, FIRMWARE_VERSION);
   request.id = this->claim_request_ = this->next_id_++;

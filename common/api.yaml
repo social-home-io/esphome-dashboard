@@ -8,21 +8,21 @@ api:
   actions:
     # Connect from Home Assistant: Social Home calls this through Home
     # Assistant (esphome.<node name, - → _>_connect_social_home) with its
-    # address and a one-time claim (single use, 10 minutes: HA keeps action
-    # data in its recorder). The panel trades the claim for a token at
+    # address and a one-time claim (single use, 10 minutes), sealed to the
+    # panel's key (the "Social Home key" sensor below): HA keeps action data
+    # in its recorder, so it only ever sees ciphertext. The panel opens
+    # it and trades the claim for a token at
     # POST <url>/api/display/v1/pair/claim; an existing pairing is replaced.
     - action: connect_social_home
       description: Connect this panel to a Social Home household (started by Connect in Social Home).
       variables:
-        url:
+        sealed:
           type: string
-          description: The Social Home dashboard address.
-          example: http://192.168.1.20:8100
-        claim:
-          type: string
-          description: One-time connect claim from Social Home.
+          description: >-
+            Social Home's address and one-time connect claim, sealed to this
+            panel's Social Home key.
       then:
-        - lambda: id(socialhome).connect_from_home_assistant(url, claim);
+        - lambda: id(socialhome).connect_from_home_assistant(sealed);
 
 text_sensor:
   - platform: socialhome_display
@@ -35,3 +35,8 @@ text_sensor:
     # connect_social_home action is registered under.
     node:
       name: Social Home node
+    # The panel's public key Social Home seals the connect claim to. Found by
+    # its name like "Social Home node", so it must stay exactly
+    # "Social Home key". Renewed on Forget server and after a factory reset.
+    key:
+      name: Social Home key

@@ -53,11 +53,21 @@ Other ways to set Wi-Fi:
 
 Or let Home Assistant do it: adopt the panel in Home Assistant, then press
 **Connect** for it in Social Home. Social Home finds the panel through Home
-Assistant and calls the panel's `connect_social_home` action with its address
-and a one-time claim (valid ten minutes, used once); the panel trades the
-claim for its token, no code needed. Connecting a panel that is already
-paired moves it to the new pairing; if the connect fails, a paired panel
-keeps its old pairing.
+Assistant and calls the panel's `connect_social_home` action with one
+variable, `sealed`: its address and a one-time claim (valid ten minutes, used
+once), sealed to the panel's own key. Home Assistant's recorder keeps every
+action's data, so all it ever stores is ciphertext and the panel's public
+key, never the claim or the address. The panel opens it, trades the claim for
+its token and proves it holds the key Social Home sealed to (header
+`X-Display-Key`), no code needed. Connecting a panel that is already paired
+moves it to the new pairing; if the connect fails (or the request can't be
+opened on this panel), a paired panel keeps its old pairing.
+
+The key is an X25519 keypair the panel makes on first boot and keeps in its
+flash; only the public half leaves the panel. **Forget server** makes a new
+one, and so does a factory reset (it wipes the stored settings), so a
+connect request sealed to the old key no longer opens: press Connect in
+Social Home again.
 
 Hold the clock for five seconds to open the panel's settings: the server, the
 panel id, the firmware, the licences, and **Forget server** to start over.
@@ -70,9 +80,12 @@ dashboard works without Home Assistant, and the native API never reboots the
 panel when nothing connects. Once adopted, the panel also extends Home
 Assistant's Bluetooth range (active Bluetooth proxy), offers the
 `connect_social_home` action Social Home uses to connect it (see above) and
-reports two text sensors: **Social Home status** (`unpaired`, `pairing`,
-`paired`, `locked` or `unreachable`) and **Social Home node** (diagnostic: the
-ESPHome node name, which Social Home reads to call the action).
+reports three text sensors: **Social Home status** (`unpaired`, `pairing`,
+`paired`, `locked` or `unreachable`), **Social Home node** (diagnostic: the
+ESPHome node name, which Social Home reads to call the action) and **Social
+Home key** (diagnostic: the panel's public key, 43 characters of base64url,
+which Social Home seals the connect claim to). Social Home finds both
+diagnostic sensors by these exact names.
 
 To build it yourself from the ESPHome dashboard, adopt the panel or start from
 [`devices/guition-jc8012p4a1/esphome.yaml`](devices/guition-jc8012p4a1/esphome.yaml),
@@ -140,7 +153,8 @@ Host tests (parser against the pinned fixtures, layout maths):
 cmake -S tests/cpp -B build/tests && cmake --build build/tests && ctest --test-dir build/tests
 ```
 
-Screenshots without hardware (needs `libsdl2-dev` and `libssl-dev`): build
+Screenshots without hardware (needs `libsdl2-dev`, `libssl-dev` and
+`libmbedtls-dev`): build
 `builds/host-sdl.yaml`, run the binary, and drive it through its command file
 (see `builds/host/host_driver.h`). It writes BMPs to
 `builds/.esphome/snapshots/socialhome-host/`. The host build has no mDNS: to
