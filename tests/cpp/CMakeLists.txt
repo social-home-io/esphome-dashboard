@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MPL-2.0
 # Host tests for the socialhome_display component's platform-free code:
 # the JSON parser (against the pinned Social Home fixtures), the layout /
-# URL helpers and the mDNS answer filtering.
+# URL helpers, the mDNS answer filtering and the sealed connect claim
+# (against Social Home's shared vectors).
 #
 #   cmake -S tests/cpp -B build/tests && cmake --build build/tests && ctest --test-dir build/tests -V
 
@@ -33,6 +34,21 @@ if(NOT TARGET pngle)
   target_include_directories(pngle PUBLIC ${pngle_SOURCE_DIR}/src)
 endif()
 
+# The sealed connect claim's crypto: the Mbed TLS line ESP-IDF 5.5 ships
+# (3.6.x LTS, Apache-2.0), built from the release tarball (it carries the
+# framework submodule the tag archive lacks).
+FetchContent_Declare(
+  MbedTLS
+  URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.6/mbedtls-3.6.6.tar.bz2
+  URL_HASH SHA256=8fb65fae8dcae5840f793c0a334860a411f884cc537ea290ce1c52bb64ca007a
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(INSTALL_MBEDTLS_HEADERS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(MbedTLS)
+
 set(COMPONENT ${CMAKE_CURRENT_SOURCE_DIR}/../../components/socialhome_display)
 set(FIXTURES ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/display-api/v1/fixtures)
 
@@ -42,13 +58,15 @@ add_executable(socialhome_display_tests
   test_util.cpp
   test_png.cpp
   test_discovery.cpp
+  test_claim_seal.cpp
+  ${COMPONENT}/claim_seal.cpp
   ${COMPONENT}/discovery.cpp
   ${COMPONENT}/parser.cpp
   ${COMPONENT}/png.cpp
   ${COMPONENT}/util.cpp
 )
 target_include_directories(socialhome_display_tests PRIVATE ${COMPONENT})
-target_link_libraries(socialhome_display_tests PRIVATE ArduinoJson pngle)
+target_link_libraries(socialhome_display_tests PRIVATE ArduinoJson pngle MbedTLS::mbedcrypto)
 target_compile_options(socialhome_display_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
 target_compile_definitions(socialhome_display_tests PRIVATE FIXTURES_DIR="${FIXTURES}")
 

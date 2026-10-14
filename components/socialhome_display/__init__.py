@@ -3,7 +3,8 @@
 
 Finds Social Home on the network (mDNS, ``_socialhome-dash._tcp``; needs
 ``mdns:``), pairs with a household (a code typed in Admin › Dashboard, or
-Connect from Home Assistant through the connect_social_home action), polls
+Connect from Home Assistant through the connect_social_home action, whose
+claim is sealed to the panel's own X25519 key), polls
 the display API (``/api/display/v1/``) and draws the household dashboard with
 LVGL: Overview, Messages, Notes, Map, each person's page and the picture
 view, the night screen and the privacy lock.
@@ -161,3 +162,7 @@ async def to_code(config):
     # PNG decoding for avatars and emoji (MIT; the same library ESPHome's
     # runtime_image uses).
     cg.add_library("pngle", "1.1.0")
+    # The sealed connect claim (claim_seal.cpp) uses Mbed TLS: ESP-IDF's on a
+    # panel, the system libmbedcrypto (libmbedtls-dev) on the host build.
+    if CORE.is_host:
+        cg.add_build_flag("-lmbedcrypto")

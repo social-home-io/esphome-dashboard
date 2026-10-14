@@ -24,6 +24,7 @@
 #endif
 
 #include "browser.h"
+#include "claim_seal.h"
 #include "images.h"
 #include "map_picture.h"
 #include "model.h"
@@ -51,6 +52,11 @@ enum class Mode : uint8_t {
 /// Kept under 256 bytes per preference, the limit some backends have.
 struct StoredText {
   char value[160];
+};
+
+/// The panel's X25519 private key (NVS). The public half is derived at boot.
+struct StoredKey {
+  uint8_t private_key[PANEL_KEY_BYTES];
 };
 
 /// Social Home wall dashboard: pairs with a Social Home household, polls the
@@ -82,6 +88,9 @@ class SocialHomeDisplay : public Component {
   void set_status_sensor(text_sensor::TextSensor *sensor) { this->status_sensor_ = sensor; }
   /// "Social Home node": the ESPHome node name, so Social Home can name the connect action.
   void set_node_sensor(text_sensor::TextSensor *sensor) { this->node_sensor_ = sensor; }
+  /// "Social Home key": the panel's X25519 public key (43-character
+  /// base64url) Social Home seals the connect claim to.
+  void set_key_sensor(text_sensor::TextSensor *sensor) { this->key_sensor_ = sensor; }
 #endif
 
   void setup() override;
@@ -90,12 +99,14 @@ class SocialHomeDisplay : public Component {
   // After LVGL (setup_priority::PROCESSOR) has created its display.
   float get_setup_priority() const override { return setup_priority::LATE; }
 
-  /// Forget the server and token (settings screen, or an automation).
+  /// Forget the server and token (settings screen, or an automation), and
+  /// renew the panel key.
   void forget_server();
   /// The connect_social_home API action: Social Home (through Home Assistant)
-  /// hands over its address and a one-time claim; the panel trades the claim
-  /// for a token (POST /pair/claim). Replaces an existing pairing on success.
-  void connect_from_home_assistant(const std::string &url, const std::string &claim);
+  /// hands over its address and a one-time claim, sealed to this panel's key
+  /// (claim_seal.h); the panel opens it and trades the claim for a token
+  /// (POST /pair/claim). Replaces an existing pairing on success.
+  void connect_from_home_assistant(const std::string &sealed);
   Mode get_mode() const { return this->mode_; }
   /// The board path shown now ("/api/display/v1/home", …).
   const std::string &get_path() const { return this->current_path_; }
@@ -110,6 +121,15 @@ class SocialHomeDisplay : public Component {
   void start_pairing_();
   void handle_api_(HttpResponse &response);
   void handle_pairing_(HttpResponse &response);
+  /// Load the panel key, or make (and store) one when there is none.
+  void load_panel_key_();
+  /// A new panel key (Forget server): claims sealed to the old one no longer open.
+  void renew_panel_key_();
+  void publish_panel_key_();
+  /// Trade an opened claim for a token at `url`.
+  void claim_at_(const std::string &url, const std::string &claim);
+  /// A connect request that didn't open: say so like a failed claim.
+  void refuse_claim_();
   void handle_claim_(HttpResponse &response);
   void finish_claim_();
   void publish_status_();
@@ -251,12 +271,16 @@ class SocialHomeDisplay : public Component {
 #ifdef USE_TEXT_SENSOR
   text_sensor::TextSensor *status_sensor_{nullptr};
   text_sensor::TextSensor *node_sensor_{nullptr};
+  text_sensor::TextSensor *key_sensor_{nullptr};
 #endif
 
   // persisted
   ESPPreferenceObject pref_server_;
   ESPPreferenceObject pref_token_;
   ESPPreferenceObject pref_display_;
+  ESPPreferenceObject pref_key_;
+  PanelKeyPair panel_key_;
+  std::string panel_key_text_;  ///< empty when no key could be made
   std::string server_;
   std::string token_;
   std::string display_id_;
