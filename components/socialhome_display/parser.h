@@ -29,6 +29,18 @@ ParseResult parse_theme(const char *data, size_t len, Theme &out);
 ParseResult parse_pair_start(const char *data, size_t len, PairStart &out);
 /// 200 of GET /pair/{id}.
 ParseResult parse_pair_status(const char *data, size_t len, PairStatus &out);
+/// How POST /pair/claim (Connect from Home Assistant) ended.
+enum class ClaimResult : uint8_t {
+  PAIRED,    ///< 200 {"status": "paired", "token", "display_id"}: `out` is filled
+  EXPIRED,   ///< 404: claim unknown, expired, used, or for another panel
+  DISABLED,  ///< 409 DASHBOARD_DISABLED: the household dashboard is off
+  BUSY,      ///< 429: too many tries (Retry-After)
+  FAILED,    ///< no answer, or anything else: can't reach Social Home
+};
+
+/// The answer to POST /pair/claim: `status` 0 means no answer. A 200 has the
+/// same shape as the paired answer of GET /pair/{id}.
+ClaimResult parse_pair_claim(int status, const char *data, size_t len, PairStatus &out);
 /// `error.code` of an error body ("NIGHT", "TAB_OFF", …), empty if none.
 std::string parse_error_code(const char *data, size_t len);
 /// The whole error body (code, detail, params); empty code if none.

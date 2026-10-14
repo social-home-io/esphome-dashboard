@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <cstdlib>
+#include <utility>
 
 // Same configuration as ESPHome's json component (json_util.h), so every
 // translation unit sees one ArduinoJson.
@@ -804,6 +805,27 @@ ParseResult parse_pair_status(const char *data, size_t len, PairStatus &out) {
     return ParseResult::BAD_SHAPE;
   }
   return ParseResult::OK;
+}
+
+ClaimResult parse_pair_claim(int status, const char *data, size_t len, PairStatus &out) {
+  out = PairStatus{};
+  switch (status) {
+    case 200: {
+      PairStatus parsed;
+      if (parse_pair_status(data, len, parsed) != ParseResult::OK || parsed.state != PairState::PAIRED)
+        return ClaimResult::FAILED;
+      out = std::move(parsed);
+      return ClaimResult::PAIRED;
+    }
+    case 404:
+      return ClaimResult::EXPIRED;
+    case 409:
+      return parse_error_code(data, len) == "DASHBOARD_DISABLED" ? ClaimResult::DISABLED : ClaimResult::FAILED;
+    case 429:
+      return ClaimResult::BUSY;
+    default:
+      return ClaimResult::FAILED;
+  }
 }
 
 std::string parse_error_code(const char *data, size_t len) {

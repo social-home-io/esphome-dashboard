@@ -1,7 +1,7 @@
 # Pinned Social Home display API contract (schemas + fixtures).
 # Copied verbatim from social-home-io/socialhome docs/display-api/v1/ at the
-# merge of social-home-io/socialhome#924.
+# merge of social-home-io/socialhome#925.
 # Update: bump SOCIALHOME_REF, run `python3 scripts/display_api_contract.py --update`,
 # then fix the parser / host tests until `tests/cpp` passes again.
 SOCIALHOME_REPO=social-home-io/socialhome
-SOCIALHOME_REF=4073aaff2035eaa73d9d14806d29c57744dceabf
+SOCIALHOME_REF=b5be2033594762f68b36237de37d30f76b45d99e

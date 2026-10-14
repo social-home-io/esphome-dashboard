@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MPL-2.0
 """Social Home wall dashboard for ESPHome LVGL panels.
 
-Pairs with a Social Home household (a code typed in Admin › Dashboard), polls
+Pairs with a Social Home household (a code typed in Admin › Dashboard, or
+Connect from Home Assistant through the connect_social_home action), polls
 the display API (``/api/display/v1/``) and draws the household dashboard with
 LVGL: Overview, Messages, Notes, Map, each person's page and the picture
 view, the night screen and the privacy lock.

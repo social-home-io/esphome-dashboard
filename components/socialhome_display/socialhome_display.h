@@ -19,6 +19,9 @@
 #ifdef USE_TIME
 #include "esphome/components/time/real_time_clock.h"
 #endif
+#ifdef USE_TEXT_SENSOR
+#include "esphome/components/text_sensor/text_sensor.h"
+#endif
 
 #include "images.h"
 #include "map_picture.h"
@@ -40,6 +43,7 @@ enum class Mode : uint8_t {
   RUNNING,        ///< the household dashboard
   LOCKED,         ///< privacy-locked (423)
   UPDATE_NEEDED,  ///< the server speaks a newer API
+  CLAIMING,       ///< Connect from Home Assistant: claiming, or showing why it failed
 };
 
 /// One stored string (NVS on ESP32): survives reboots and firmware updates.
@@ -70,6 +74,12 @@ class SocialHomeDisplay : public Component {
 #ifdef USE_TIME
   void set_time(time::RealTimeClock *clock) { this->time_ = clock; }
 #endif
+#ifdef USE_TEXT_SENSOR
+  /// "Social Home status" for Home Assistant (unpaired / pairing / paired / locked / unreachable).
+  void set_status_sensor(text_sensor::TextSensor *sensor) { this->status_sensor_ = sensor; }
+  /// "Social Home node": the ESPHome node name, so Social Home can name the connect action.
+  void set_node_sensor(text_sensor::TextSensor *sensor) { this->node_sensor_ = sensor; }
+#endif
 
   void setup() override;
   void loop() override;
@@ -79,6 +89,10 @@ class SocialHomeDisplay : public Component {
 
   /// Forget the server and token (settings screen, or an automation).
   void forget_server();
+  /// The connect_social_home API action: Social Home (through Home Assistant)
+  /// hands over its address and a one-time claim; the panel trades the claim
+  /// for a token (POST /pair/claim). Replaces an existing pairing on success.
+  void connect_from_home_assistant(const std::string &url, const std::string &claim);
   Mode get_mode() const { return this->mode_; }
   /// The board path shown now ("/api/display/v1/home", …).
   const std::string &get_path() const { return this->current_path_; }
@@ -93,6 +107,9 @@ class SocialHomeDisplay : public Component {
   void start_pairing_();
   void handle_api_(HttpResponse &response);
   void handle_pairing_(HttpResponse &response);
+  void handle_claim_(HttpResponse &response);
+  void finish_claim_();
+  void publish_status_();
   void handle_board_(HttpResponse &response);
   void handle_theme_(HttpResponse &response);
   void handle_lock_(HttpResponse &response);
@@ -175,6 +192,7 @@ class SocialHomeDisplay : public Component {
   void build_server_(lv_obj_t *screen);
   void build_pairing_(lv_obj_t *screen);
   void build_update_(lv_obj_t *screen);
+  void build_claim_(lv_obj_t *screen);
   lv_obj_t *setup_card_(lv_obj_t *screen, const std::string &title, const std::string &text);
   void open_settings_();
   void close_settings_();
@@ -188,6 +206,7 @@ class SocialHomeDisplay : public Component {
   static void on_server_ready_(lv_event_t *event);
   static void on_change_server_(lv_event_t *event);
   static void on_retry_(lv_event_t *event);
+  static void on_claim_done_(lv_event_t *event);
   static void on_pin_key_(lv_event_t *event);
   static void on_settings_press_(lv_event_t *event);
   static void on_settings_close_(lv_event_t *event);
@@ -215,6 +234,10 @@ class SocialHomeDisplay : public Component {
 #endif
 #ifdef USE_TIME
   time::RealTimeClock *time_{nullptr};
+#endif
+#ifdef USE_TEXT_SENSOR
+  text_sensor::TextSensor *status_sensor_{nullptr};
+  text_sensor::TextSensor *node_sensor_{nullptr};
 #endif
 
   // persisted
@@ -246,6 +269,18 @@ class SocialHomeDisplay : public Component {
   uint32_t next_theme_{0};
   uint32_t next_pair_poll_{0};
   uint32_t pair_expires_{0};
+  /// Connect from Home Assistant: the request in flight, when a failure
+  /// screen gives up, and the pairing to go back to if the claim fails.
+  uint32_t claim_request_{0};
+  uint32_t claim_until_{0};
+  std::string claim_error_;
+  std::string prev_server_;
+  std::string prev_token_;
+  std::string prev_display_id_;
+  /// The MAC as ESPHome reports it to Home Assistant ("AA:BB:…"), sent as
+  /// X-Display-Mac so Social Home can match the panel to its HA device.
+  std::string mac_;
+  const char *published_status_{nullptr};
   std::string current_path_{"/api/display/v1/home"};
   std::string requested_path_;
   std::map<std::string, std::string> etags_;

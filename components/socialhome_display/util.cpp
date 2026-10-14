@@ -56,6 +56,76 @@ std::string normalize_server_url(const std::string &typed) {
   return scheme + "://" + text;
 }
 
+std::string url_host(const std::string &url) {
+  size_t sep = url.find("://");
+  if (sep == std::string::npos)
+    return url;
+  std::string host = url.substr(sep + 3);
+  size_t slash = host.find('/');
+  if (slash != std::string::npos)
+    host = host.substr(0, slash);
+  size_t colon = host.rfind(':');
+  size_t close = host.rfind(']');
+  if (colon != std::string::npos && (close == std::string::npos || colon > close))
+    host = host.substr(0, colon);
+  return host;
+}
+
+std::string json_escape(const std::string &text) {
+  std::string out;
+  out.reserve(text.size() + 2);
+  for (char ch : text) {
+    auto u = static_cast<unsigned char>(ch);
+    switch (ch) {
+      case '"':
+        out += "\\\"";
+        break;
+      case '\\':
+        out += "\\\\";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
+      default:
+        if (u < 0x20) {
+          char buf[7];
+          snprintf(buf, sizeof(buf), "\\u%04x", u);
+          out += buf;
+        } else {
+          out.push_back(ch);
+        }
+    }
+  }
+  return out;
+}
+
+std::string pair_request_body(const std::string &model, const std::string &firmware) {
+  return "{\"model\": \"" + json_escape(model) + "\", \"firmware\": \"" + json_escape(firmware) + "\"}";
+}
+
+std::string claim_request_body(const std::string &claim, const std::string &model, const std::string &firmware) {
+  return "{\"claim\": \"" + json_escape(claim) + "\", \"model\": \"" + json_escape(model) + "\", \"firmware\": \"" +
+         json_escape(firmware) + "\"}";
+}
+
+const char *ha_status(bool paired, bool pairing, bool locked, bool unreachable) {
+  if (pairing)
+    return "pairing";
+  if (!paired)
+    return "unpaired";
+  if (locked)
+    return "locked";
+  if (unreachable)
+    return "unreachable";
+  return "paired";
+}
+
 uint32_t parse_retry_after(const std::string &value, uint32_t fallback) {
   if (value.empty() || !std::all_of(value.begin(), value.end(), ::isdigit) || value.size() > 9)
     return fallback;
