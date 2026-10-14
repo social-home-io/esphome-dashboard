@@ -26,6 +26,7 @@ Compare two runs with diff.py. See .claude/skills/panel-screenshots/SKILL.md.
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import shutil
@@ -43,7 +44,7 @@ from zoneinfo import ZoneInfo
 
 import boxes
 import naming
-from cdp import Browser
+from cdp import Browser, fontconfig_xml
 from images import side_by_side
 from panel import Panel, PanelError
 
@@ -84,6 +85,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--time-zone",
                    help="household time zone (default: a weekday zone where it is about 16:05 now); "
                         "give an earlier run's (run.json) to compare the same board")
+    p.add_argument("--browser-font", choices=("roboto", "system"), default="roboto",
+                   help="roboto (default): the browser draws system-ui with the Roboto files the "
+                        "panel build fetched (builds/.esphome/font), as an Android tablet would; "
+                        "system: the machine's own sans (DejaVu on most Linux)")
     p.add_argument("--keep-work", action="store_true",
                    help="keep the scratch dir (Social Home data, panel prefs) for debugging")
     a = p.parse_args(argv)
@@ -133,6 +138,7 @@ class Run:
         self.summary: list[dict] = []
         self.notes: list[str] = []
         self.tz: ZoneInfo | None = None
+        self.browser_font = "system"
 
     # ---- helpers -----------------------------------------------------------
 
@@ -208,6 +214,25 @@ class Run:
         program = os.path.join(self.work, "panel-program")
         shutil.copy2(built, program)
         return program
+
+    def browser_env(self) -> dict[str, str] | None:
+        """The browser's environment: a fontconfig with the panel's Roboto."""
+        if self.a.browser_font != "roboto":
+            return None
+        fonts = sorted(glob.glob(os.path.join(ROOT, "builds", ".esphome", "font", "Roboto@*.ttf")))
+        if not fonts:
+            self.notes.append("browser font: no Roboto in builds/.esphome/font (build the panel "
+                              "once), the browser drew the system sans")
+            return None
+        fc = os.path.join(self.work, "fontconfig")
+        os.makedirs(os.path.join(fc, "fonts"), exist_ok=True)
+        for f in fonts:
+            shutil.copy2(f, os.path.join(fc, "fonts"))
+        conf = os.path.join(fc, "fonts.conf")
+        with open(conf, "w", encoding="utf-8") as f:
+            f.write(fontconfig_xml(os.path.join(fc, "fonts"), os.path.join(fc, "cache")))
+        self.browser_font = "roboto"
+        return dict(os.environ, FONTCONFIG_FILE=conf)
 
     def start_household(self) -> None:
         env = {k: v for k, v in os.environ.items() if k not in ("VIRTUAL_ENV", "PYTHONHOME")}
@@ -535,12 +560,13 @@ class Run:
         self.start_household()
         self.pair_panel(program)
         want_pairs = [s for s in self.a.screen_list if s not in naming.UNLOCALISED]
+        env = self.browser_env() if want_pairs else None
         if want_pairs:
             for locale in self.a.locales:
                 if self.browser:
                     self.browser.close()
                 # --lang: the browser's own formatting follows the household's language.
-                self.browser = Browser(self.chromium, lang=locale)
+                self.browser = Browser(self.chromium, lang=locale, env=env)
                 for scheme in self.a.schemes:
                     self.combination(locale, scheme)
         self.write_index(started)
@@ -552,14 +578,16 @@ class Run:
             "firmware_commit": git_head(ROOT), "time_zone": self.info["tz"],
             "started": datetime.fromtimestamp(started, self.tz).isoformat(timespec="seconds"),
             "took_s": round(took), "locales": self.a.locales, "schemes": self.a.schemes,
-            "screens": self.a.screen_list, "shots": self.shots, "notes": self.notes,
+            "screens": self.a.screen_list, "browser_font": self.browser_font,
+            "shots": self.shots, "notes": self.notes,
         }
         with open(os.path.join(self.out, "run.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=1)
         lines = [
             "# Panel vs browser: offsets", "",
             f"Social Home `{meta['socialhome_commit'][:12]}`, firmware `{meta['firmware_commit'][:12]}`, "
-            f"household time {meta['started']} ({meta['time_zone']}), {round(took / 60, 1)} min.",
+            f"household time {meta['started']} ({meta['time_zone']}), {round(took / 60, 1)} min, "
+            f"browser font {self.browser_font}.",
             "Δ = panel − browser, in px, over the texts both screens show (offsets-NAME.md has each).",
             "", "| shot | panel / browser minute | texts | median abs Δy | largest abs Δx | largest abs Δy |",
             "|---|---|---|---|---|---|"]

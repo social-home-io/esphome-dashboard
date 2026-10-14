@@ -28,6 +28,8 @@ for screenshots.
 - `.venv/bin/python scripts/screenshots/run.py --socialhome ../socialhome --out /tmp/shots`
   — the panel next to the browser dashboard, every screen, for the PR
   (`.claude/skills/panel-screenshots/SKILL.md`).
+- `python3 scripts/screenshots/check.py /tmp/shots` — what the Panel UI CI
+  job asserts about that run.
 
 USB isn't passed into the container (it depends on your OS): flash with
 the [web installer](https://social-home-io.github.io/esphome-dashboard/) or

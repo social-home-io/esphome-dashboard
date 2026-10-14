@@ -42,3 +42,7 @@
   browser dashboard in headless Chromium, compare images, `dump` vs
   `getBoundingClientRect()` offsets, and `diff.py` between two runs. How to
   run and read it: `.claude/skills/panel-screenshots/SKILL.md`.
+  `scripts/screenshots/check.py RUN` asserts the panel matches the browser
+  (shots, ±4 px offsets, overlaps, words, log errors) bar the reasoned
+  exceptions in `scripts/screenshots/accepted.json`; the **Panel UI**
+  workflow runs both on every pull request.

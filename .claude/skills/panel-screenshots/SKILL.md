@@ -57,7 +57,8 @@ messages, notes, map, reader, picture, settings, night, lock, pinpad,
 wrong-pin, last-try, offline`), `--ports BASE` (Social Home on BASE, its
 dashboard on BASE+1, the run's control API on BASE+2; default 19780 — give
 each parallel run its own), `--time-zone` (see below), `--esphome`,
-`--panel-binary` (skip the build), `--chromium`, `--keep-work`.
+`--panel-binary` (skip the build), `--chromium`, `--browser-font
+roboto|system` (default roboto, see below), `--keep-work`.
 
 What it does, in order — and it stops everything it started on success,
 error or Ctrl-C:
@@ -70,8 +71,10 @@ error or Ctrl-C:
    is; Mia's and Leo's timetables (a cancelled lesson, a moved room); timed
    and all-day calendar items; chores; shopping; seven sticky notes;
    household chat with `@mia`, `@leo` and an `@here`. Dashboard on, tablet
-   password, PIN `2468`. Household time is a weekday ~16:05 (a time zone is
-   picked so the real clock reads that), so lessons are under way.
+   password, PIN `2468`. Household time is ~16:05 (a time zone is
+   picked so the real clock reads that), so lessons are under way — a
+   weekday where one is, else (Saturday morning to Sunday morning UTC) the
+   weekend day is made a school day for the run.
 3. Starts the panel fresh (own `ESPHOME_PREFDIR` → own driver file, own
    snapshot dir), shoots the address screen, taps the household, shoots the
    pairing code, pairs it as the admin.
@@ -127,15 +130,50 @@ refreshes.
 
 ## Known, accepted differences
 
-- **Fonts:** the panel draws Roboto; headless Chromium on Linux renders the
-  dashboard's system font stack as DejaVu Sans — wider, so Δw is mostly
-  negative and line breaks can differ. A real tablet (Roboto on Android) is
-  closer. Not a bug unless the panel truncates where the browser doesn't.
+- **Fonts:** the panel draws Roboto. By default (`--browser-font roboto`)
+  the run gives Chromium a fontconfig that draws the dashboard's
+  `system-ui` stack with the very Roboto files the panel build fetched
+  (`builds/.esphome/font/`), as an Android tablet would — so Δw shows real
+  font-size differences, not DejaVu's wider glyphs. `--browser-font system`
+  is the machine's own sans (DejaVu on Linux: wider, other line breaks).
+- **Box shape:** many panel labels are as wide as their cell / row with the
+  text centred or left in it; the browser box is the text itself. Δw (and
+  Δx for centred text) then says nothing about where the text is drawn.
+  `scripts/screenshots/accepted.json` names each such case.
 - **Emoji:** Twemoji pictures on the panel, Noto Color Emoji in Chromium.
 - **Speech:** the browser's read-aloud (🔊) has no panel counterpart.
 - **Auto scheme ("Auto by day"):** the panel follows the household's Auto
   (dark at night); the headless browser is told `prefers-color-scheme:
   light`. By day both are light.
+
+## Checking a run (what CI asserts)
+
+```sh
+python3 scripts/screenshots/check.py /tmp/shots-branch
+```
+
+Fails (exit 1, `check.md` in the run dir, printed too) when: an expected
+shot is missing or a step didn't reach its state; a text both screens show
+is more than ±4 px off (Δx Δy Δw Δh, or further than `boxes.match` reaches);
+a panel text runs off the screen, is cut sideways by its container, or is
+drawn over another text in the same layer (the clock over the offline
+note); the two screens say different words (clock times and numbers
+aside); the panel log has an `[E]` line or a crash, the household log a
+traceback. Except what `scripts/screenshots/accepted.json` accepts — every
+entry scoped to screens (and optionally locales / schemes), with bounds and
+a **reason** (format: `checks.py`). `--suggest FILE` writes entries that
+would accept a run's failures: a start for writing real ones, never to
+paste unread.
+
+The **Panel UI** workflow (`.github/workflows/panel-ui.yml`) runs `run.py`
++ `check.py` on every pull request and push to `main`, one job per locale
+(en, de) × scheme (light, dark), against the Social Home `SOURCE` pins,
+with the browser on Roboto. The job summary has the per-shot table and a
+link to the artifact (every PNG, `offsets*.md`, `boxes-*.json`, `check.md`,
+logs); a `diff.py` against the last green `main` run is added as
+information, never a failure. A PR that fixes a gap tightens or deletes its
+`accepted.json` entry (the report lists entries a run didn't need); a PR
+that widens one says why in its description.
 
 ## Pitfalls (learned the hard way)
 

@@ -56,30 +56,30 @@ EMOJI_FONT = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
 
 # Weekday zones spread around the clock; one of them reads ~16:05 now.
 ZONES = [
-    "Pacific/Honolulu", "America/Anchorage", "America/Los_Angeles", "America/Denver",
-    "America/Chicago", "America/New_York", "America/Halifax", "America/St_Johns",
-    "America/Sao_Paulo", "Atlantic/Cape_Verde", "Atlantic/Reykjavik", "Europe/London",
-    "Europe/Berlin", "Europe/Athens", "Europe/Istanbul", "Asia/Tehran", "Asia/Dubai",
-    "Asia/Kabul", "Asia/Karachi", "Asia/Kolkata", "Asia/Kathmandu", "Asia/Dhaka",
-    "Asia/Yangon", "Asia/Bangkok", "Asia/Singapore", "Australia/Eucla", "Asia/Tokyo",
-    "Australia/Darwin", "Australia/Brisbane", "Australia/Adelaide", "Australia/Sydney",
-    "Pacific/Noumea", "Pacific/Auckland", "Pacific/Chatham", "America/Caracas",
-    "America/Bogota", "America/Mexico_City",
+    "Pacific/Honolulu", "Pacific/Gambier", "America/Anchorage", "America/Los_Angeles",
+    "America/Denver", "America/Chicago", "America/New_York", "America/Halifax",
+    "America/St_Johns", "America/Sao_Paulo", "America/Noronha", "Atlantic/Cape_Verde",
+    "Atlantic/Reykjavik", "Europe/London", "Europe/Berlin", "Europe/Athens", "Europe/Istanbul",
+    "Asia/Tehran", "Asia/Dubai", "Asia/Kabul", "Asia/Karachi", "Asia/Kolkata", "Asia/Kathmandu",
+    "Asia/Dhaka", "Asia/Yangon", "Asia/Bangkok", "Asia/Singapore", "Australia/Eucla",
+    "Asia/Tokyo", "Australia/Darwin", "Australia/Brisbane", "Australia/Adelaide",
+    "Australia/Sydney", "Pacific/Noumea", "Pacific/Fiji", "Pacific/Auckland", "Pacific/Chatham",
+    "America/Caracas", "America/Bogota", "America/Mexico_City",
 ]
 
 
-def pick_zone(now_utc: datetime, target_min: int = 16 * 60) -> str:
-    """The weekday zone whose local time is closest to just after target."""
-    best: tuple[int, str] | None = None
+def pick_zone(now_utc: datetime, target_min: int = 16 * 60, slack: int = 30) -> str:
+    """The zone whose local time is closest to just after target: a weekday
+    one if any is within ``slack`` minutes of the best, else any day (from
+    Saturday morning to Sunday morning UTC no zone has a weekday afternoon;
+    the school week is then seeded on that day too — see seed_timetables)."""
+    scored = []
     for z in ZONES:
         loc = now_utc.astimezone(ZoneInfo(z))
-        if loc.weekday() > 4:
-            continue
-        d = abs(loc.hour * 60 + loc.minute - target_min - 4)
-        if best is None or d < best[0]:
-            best = (d, z)
-    assert best is not None
-    return best[1]
+        scored.append((abs(loc.hour * 60 + loc.minute - target_min - 4), loc.weekday() > 4, z))
+    best = min(scored)[0]
+    weekday = [s for s in scored if not s[1] and s[0] <= best + slack]
+    return min(weekday or scored)[2]
 
 
 # argv[5]: a zone to use instead (run.py --time-zone, to match an earlier run).
@@ -258,7 +258,7 @@ class Household:
 
     async def add_timetable(self, who, name, color, entries, overrides) -> None:
         tt = (await self.api("POST", "/api/timetables", codes=(201,), json={
-            "name": name, "template": "empty", "days": [0, 1, 2, 3, 4],
+            "name": name, "template": "empty", "days": self.school_days,
             "assignees": [self.users[who]], "color": color}))["timetable"]
         for e in entries:
             tt = (await self.api("POST", f"/api/timetables/{tt['id']}/entries",
@@ -278,7 +278,10 @@ class Household:
             return d
 
         today, tomorrow = NOW.weekday(), (NOW + timedelta(days=1)).weekday()
-        days = [today] if tomorrow > 4 else [today, tomorrow]
+        # Friday: no school tomorrow. A weekend day (pick_zone found no
+        # weekday afternoon) is a school day for the run, like Thursday.
+        days = [today] if today == 4 else [today, tomorrow]
+        self.school_days = sorted({0, 1, 2, 3, 4, *days})
         mia, leo = [], []
         for d in days:
             mia += [

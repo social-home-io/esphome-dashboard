@@ -60,6 +60,26 @@ SETTLE_JS = r"""(async (ms) => {
 })(%d)"""
 
 
+def fontconfig_xml(font_dir: str, cache_dir: str, family: str = "Roboto") -> str:
+    """A fontconfig file (for ``FONTCONFIG_FILE``) that keeps the system's
+    fonts, adds ``font_dir`` and makes ``family`` the first choice for
+    ``system-ui`` and ``sans-serif`` — what an Android tablet does with the
+    dashboard's ``system-ui, …, Roboto`` stack. Emoji still come from the
+    system (Noto Color Emoji)."""
+    def esc(v: str) -> str:
+        return v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    aliases = "".join(
+        f'  <alias binding="strong"><family>{generic}</family>'
+        f"<prefer><family>{esc(family)}</family></prefer></alias>\n"
+        for generic in ("system-ui", "sans-serif"))
+    return ('<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
+            "<fontconfig>\n"
+            '  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>\n'
+            f"  <dir>{esc(font_dir)}</dir>\n  <cachedir>{esc(cache_dir)}</cachedir>\n"
+            f"{aliases}</fontconfig>\n")
+
+
 class CdpError(RuntimeError):
     pass
 
@@ -68,7 +88,7 @@ class Browser:
     """One headless Chromium with one page, sized like the wall tablet."""
 
     def __init__(self, chromium: str, width: int = 1280, height: int = 800,
-                 lang: str = "en-US") -> None:
+                 lang: str = "en-US", env: dict[str, str] | None = None) -> None:
         self.width, self.height = width, height
         self.profile = tempfile.mkdtemp(prefix="sh-shots-chrome-")
         to_child_r, self._to_child = os.pipe()
@@ -85,7 +105,7 @@ class Browser:
              "--font-render-hinting=none", "--no-first-run", "--mute-audio",
              "about:blank"],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            pass_fds=(3, 4), preexec_fn=wire)
+            pass_fds=(3, 4), preexec_fn=wire, env=env)
         os.close(to_child_r)
         os.close(from_child_w)
         self._next = 0
