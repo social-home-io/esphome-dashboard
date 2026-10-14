@@ -340,6 +340,19 @@ void SocialHomeDisplay::build_night_(lv_obj_t *screen) {
 }
 
 // ---- lock ------------------------------------------------------------------
+//
+// The wall tablet's lock screen (lock.html.j2 + dashboard.css at 1280×800),
+// element for element: the household name, the clock (160 px; 96 px with the
+// PIN pad open), the date, and a "🔒 PIN" pill. The pad: the alert ("Wrong
+// PIN" + "Tries left: n" / the last-try warning), "Enter PIN", the typed
+// dots, a 3 × 4 keypad (100 × 64 keys, 10 px apart, ⌫ quiet, ✓ accent; both
+// faded while they can't be used) and "Forgot the PIN?" under it — all
+// 320 px wide. Night colours in the night window (scheme_()).
+
+static constexpr int PIN_PAD_WIDTH = 320;
+static constexpr int PIN_KEY_W = 100;
+static constexpr int PIN_KEY_H = 64;
+static constexpr int PIN_GAP = 10;
 
 void SocialHomeDisplay::on_pin_key_(lv_event_t *event) {
   auto *key = static_cast<std::string *>(lv_event_get_user_data(event));
@@ -354,93 +367,187 @@ void SocialHomeDisplay::on_pin_key_(lv_event_t *event) {
   }
   if (self->unlock_request_ != 0)
     return;  // the last PIN is being checked
-  if (*key == "del") {
-    if (!self->pin_.empty())
-      self->pin_.pop_back();
-  } else if (*key == "ok") {
+  if (*key == "ok") {
     // POST /unlock {"pin"}; the answer unlocks, or says why not.
-    self->request_unlock_();
-  } else if (self->pin_.size() < 8) {
-    self->pin_ += *key;
-    if (self->pin_error_ && self->pin_note_ != nullptr) {
-      // Typing again clears "Wrong PIN".
-      self->pin_error_ = false;
-      self->pin_message_.clear();
-      lv_label_set_text(self->pin_note_, " ");
+    if (pin_ready(self->pin_))
+      self->request_unlock_();
+  } else {
+    // Typing keeps the alert, as on the tablet (only its shake stops).
+    self->pin_ = pin_after_key(self->pin_, *key);
+  }
+  self->update_pin_pad_();
+}
+
+void SocialHomeDisplay::update_pin_pad_() {
+  const Palette &p = this->palette_();
+  if (this->pin_dots_ != nullptr) {
+    lv_obj_clean(this->pin_dots_);
+    const int d = this->m_.px(18);
+    for (size_t k = 0; k < this->pin_.size(); k++) {
+      lv_obj_t *dot = this->box_(this->pin_dots_);
+      lv_obj_set_size(dot, d, d);
+      lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+      lv_obj_set_style_bg_color(dot, lv_color_hex(p.text), LV_PART_MAIN);
+      lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
     }
   }
-  if (self->pin_dots_ != nullptr) {
-    std::string dots;
-    for (size_t k = 0; k < self->pin_.size(); k++)
-      dots += "\xE2\x80\xA2 ";  // •
-    lv_label_set_text(self->pin_dots_, dots.empty() ? " " : dots.c_str());
-  }
+  const bool sending = this->unlock_request_ != 0;
+  auto enable = [](lv_obj_t *key, bool on) {
+    if (key == nullptr)
+      return;
+    // `.dash-key:disabled { opacity: 0.4 }`
+    lv_obj_set_style_opa(key, on ? LV_OPA_COVER : LV_OPA_40, LV_PART_MAIN);
+    if (on)
+      lv_obj_add_flag(key, LV_OBJ_FLAG_CLICKABLE);
+    else
+      lv_obj_remove_flag(key, LV_OBJ_FLAG_CLICKABLE);
+  };
+  enable(this->pin_del_, !sending && !this->pin_.empty());
+  enable(this->pin_ok_, !sending && pin_ready(this->pin_));
+}
+
+void SocialHomeDisplay::close_pin_pad_() {
+  this->pin_open_ = false;
+  this->pin_.clear();
+  this->pin_message_.clear();
+  this->pin_detail_.clear();
+  this->pin_error_ = false;
+  this->dirty_ = true;
 }
 
 void SocialHomeDisplay::build_lock_(lv_obj_t *screen) {
   const Palette &p = this->palette_();
   const LockScreen &lock = this->lock_;
-  lv_obj_t *col = this->column_(screen, this->m_.px(10));
-  lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  const bool open = this->pin_open_;
+  auto lock_str = [this](const std::string &value, const char *key) -> std::string {
+    return value.empty() ? this->str_(key) : value;
+  };
+  lv_obj_t *col = this->column_(screen, 0);
+  lv_obj_set_width(col, std::min(this->m_.px(640), this->screen_width_ - 2 * this->m_.px(16)));
+  lv_obj_set_flex_align(col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_center(col);
-  this->text_(col, lock.household, FontRole::LARGE, p.muted);
-  this->clock_label_(col, this->pin_open_ ? FontRole::DISPLAY : FontRole::CLOCK, p.text);
-  if (!this->pin_open_)
-    this->text_(col, lock.clock.date, FontRole::LARGE, p.muted);
-  if (!this->pin_open_) {
-    // As on the tablet: a quiet "PIN" pill under the date (no 🔒 picture:
-    // a locked panel gets no images either).
-    lv_obj_t *open = this->button_(col, lock.pin_button.empty() ? this->str_("pin_button") : lock.pin_button, false,
-                                   SocialHomeDisplay::on_pin_key_, this->payload_("open"));
-    lv_obj_set_user_data(open, this);
-    lv_obj_set_style_margin_top(open, this->m_.px(24), LV_PART_MAIN);
+
+  // .dash-lock-household: 24 px muted (the panel's nearest: 22 px).
+  lv_obj_t *household = this->text_(col, lock.household, FontRole::BODY, p.muted);
+  lv_obj_set_style_text_align(household, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_set_style_max_width(household, LV_PCT(100), LV_PART_MAIN);
+  lv_label_set_long_mode(household, LV_LABEL_LONG_MODE_WRAP);
+  // .dash-lock-time: 160 px light; 96 px with the pad open.
+  lv_obj_t *clock = this->clock_label_(col, open ? FontRole::LOCK : FontRole::NIGHT, p.text);
+  // Roboto's line box is taller than the browser's `line-height: 1`.
+  lv_obj_set_style_margin_top(clock, -this->m_.px(open ? 7 : 13), LV_PART_MAIN);
+  // .dash-lock-date: 32 px (24 px open), full text colour.
+  lv_obj_t *date = this->text_(col, lock.clock.date, open ? FontRole::BODY : FontRole::LARGE, p.text);
+  lv_obj_set_style_pad_bottom(date, this->m_.px(open ? 27 : 48), LV_PART_MAIN);
+
+  if (!open) {
+    // .dash-lock-summary: a 64 px pill "🔒 PIN", surface + border.
+    lv_obj_t *pill = this->row_(col, this->m_.px(10));
+    lv_obj_set_flex_align(pill, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_height(pill, this->m_.px(64));
+    lv_obj_set_style_min_width(pill, this->m_.px(64), LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(pill, this->m_.px(28), LV_PART_MAIN);
+    lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(pill, lv_color_hex(p.surface), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(pill, lv_color_hex(p.bg), LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(pill, lv_color_hex(p.border), LV_PART_MAIN);
+    lv_obj_set_style_border_width(pill, 1, LV_PART_MAIN);
+    lv_obj_add_flag(pill, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_user_data(pill, this);
+    lv_obj_add_event_cb(pill, SocialHomeDisplay::on_pin_key_, LV_EVENT_CLICKED, this->payload_("open"));
+    this->emoji_(pill, Emoji{"\xF0\x9F\x94\x92", "1f512"}, this->m_.px(22));
+    this->text_(pill, lock_str(lock.pin_button, "pin_button"), FontRole::TEXT_BOLD, p.text);
     return;
   }
-  this->text_(col, lock.locked.empty() ? this->str_("locked") : lock.locked, FontRole::TITLE, p.text);
-  this->text_(col, lock.enter_pin.empty() ? this->str_("enter_pin") : lock.enter_pin, FontRole::BODY, p.muted);
-  std::string dots;
-  for (size_t k = 0; k < this->pin_.size(); k++)
-    dots += "\xE2\x80\xA2 ";  // •
-  this->pin_dots_ = this->text_(col, dots.empty() ? " " : dots, FontRole::TITLE, p.text);
-  lv_obj_t *pad = this->row_(col, this->m_.px(14));
-  lv_obj_set_width(pad, this->m_.px(3 * 84 + 2 * 14));
+
+  // .dash-pin-form: one 320 px column, 12 px apart (short screens).
+  const int width = this->m_.px(PIN_PAD_WIDTH);
+  lv_obj_t *form = this->column_(col, this->m_.px(12));
+  lv_obj_set_width(form, width);
+  lv_obj_set_flex_align(form, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  if (this->pin_error_ && !this->pin_message_.empty()) {
+    // .dash-error: error colours, 12 px radius, centred; the count bold.
+    lv_obj_t *alert = this->column_(form, this->m_.px(10));
+    lv_obj_set_width(alert, LV_PCT(100));
+    lv_obj_set_flex_align(alert, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_ver(alert, this->m_.px(12), LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(alert, this->m_.px(16), LV_PART_MAIN);
+    lv_obj_set_style_radius(alert, this->m_.px(12), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(alert, lv_color_hex(p.error_bg), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(alert, LV_OPA_COVER, LV_PART_MAIN);
+    for (int k = 0; k < 2; k++) {
+      const std::string &line = k == 0 ? this->pin_message_ : this->pin_detail_;
+      if (line.empty())
+        continue;
+      lv_obj_t *label = this->wrap_(alert, line, k == 0 ? FontRole::TEXT : FontRole::TEXT_BOLD, p.error_text);
+      lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    }
+  }
+  // "Enter PIN" (.dash-field span: 600 weight).
+  this->text_(form, lock_str(lock.enter_pin, "enter_pin"), FontRole::TEXT_BOLD, p.text);
+  // .dash-pin-dots: 18 px dots, 14 px apart, at least 20 px tall.
+  this->pin_dots_ = this->row_(form, this->m_.px(14));
+  lv_obj_set_style_min_height(this->pin_dots_, this->m_.px(20), LV_PART_MAIN);
+  // .dash-keypad
+  lv_obj_t *pad = this->row_(form, this->m_.px(PIN_GAP));
+  lv_obj_set_width(pad, width);
   lv_obj_set_flex_flow(pad, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_set_style_pad_row(pad, this->m_.px(12), LV_PART_MAIN);
+  lv_obj_set_style_pad_row(pad, this->m_.px(PIN_GAP), LV_PART_MAIN);
   static const char *const KEYS[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "del", "0", "ok"};
+  this->pin_del_ = nullptr;
+  this->pin_ok_ = nullptr;
   for (const char *k : KEYS) {
+    const bool ok = strcmp(k, "ok") == 0;
+    const bool del = strcmp(k, "del") == 0;
     lv_obj_t *key = this->box_(pad);
-    int d = this->m_.px(84);
-    lv_obj_set_size(key, d, this->m_.px(64));
+    lv_obj_set_size(key, (width - 2 * this->m_.px(PIN_GAP)) / 3, this->m_.px(PIN_KEY_H));
     lv_obj_set_style_radius(key, this->m_.px(16), LV_PART_MAIN);
-    bool ok = strcmp(k, "ok") == 0;
-    lv_obj_set_style_bg_color(key, lv_color_hex(ok ? p.accent : p.surface), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(key, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(key, lv_color_hex(p.border), LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(key, lv_color_hex(p.border), LV_PART_MAIN);
+    // .dash-key / .dash-key-quiet (⌫: no fill) / .dash-key-ok (accent).
+    if (!del) {
+      lv_obj_set_style_bg_color(key, lv_color_hex(ok ? p.accent : p.surface), LV_PART_MAIN);
+      lv_obj_set_style_bg_opa(key, LV_OPA_COVER, LV_PART_MAIN);
+    }
+    lv_obj_set_style_bg_color(key, lv_color_hex(p.bg), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(key, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(key, lv_color_hex(ok ? p.accent : p.border), LV_PART_MAIN);
     lv_obj_set_style_border_width(key, 1, LV_PART_MAIN);
     lv_obj_add_flag(key, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_user_data(key, this);
     lv_obj_add_event_cb(key, SocialHomeDisplay::on_pin_key_, LV_EVENT_CLICKED, this->payload_(k));
-    if (strcmp(k, "del") == 0) {
-      // A drawn backspace: ⌫ isn't in the dashboard font.
-      lv_value_precise_t u = this->m_.px(28);
-      lv_obj_t *mark = this->poly_(key, {{u, u * 20 / 100}, {u * 35 / 100, u * 20 / 100}, {0, u / 2},
-                                         {u * 35 / 100, u * 80 / 100}, {u, u * 80 / 100}, {u, u * 20 / 100}},
-                                   std::max(2, this->m_.px(3)), p.text);
-      lv_obj_set_size(mark, this->m_.px(30), this->m_.px(30));
-      lv_obj_center(mark);
+    if (del) {
+      // A drawn ⌫ (not in Roboto): a 28 px tag outline with a cross.
+      const lv_value_precise_t w = this->m_.px(30), h = this->m_.px(20);
+      const int stroke = std::max(2, this->m_.px(2));
+      lv_obj_t *tag = this->poly_(key, {{w * 30 / 100, 0}, {w, 0}, {w, h}, {w * 30 / 100, h}, {0, h / 2},
+                                        {w * 30 / 100, 0}},
+                                  stroke, p.text);
+      lv_obj_set_size(tag, w + stroke, h + stroke);
+      lv_obj_center(tag);
+      const lv_value_precise_t cx = w * 64 / 100, cy = h / 2, r = h * 22 / 100;
+      lv_obj_t *a = this->poly_(key, {{cx - r, cy - r}, {cx + r, cy + r}}, stroke, p.text);
+      lv_obj_set_size(a, w + stroke, h + stroke);
+      lv_obj_center(a);
+      lv_obj_t *b = this->poly_(key, {{cx - r, cy + r}, {cx + r, cy - r}}, stroke, p.text);
+      lv_obj_set_size(b, w + stroke, h + stroke);
+      lv_obj_center(b);
+      this->pin_del_ = key;
     } else if (ok) {
-      lv_obj_t *check = this->check_mark_(key, this->m_.px(30), p.accent_text, std::max(3, this->m_.px(4)));
+      lv_obj_t *check = this->check_mark_(key, this->m_.px(26), p.accent_text, std::max(2, this->m_.px(3)));
       lv_obj_center(check);
+      this->pin_ok_ = key;
     } else {
-      lv_obj_t *label = this->text_(key, k, FontRole::TITLE, p.text);
+      lv_obj_t *label = this->text_(key, k, FontRole::LARGE, p.text);
       lv_obj_center(label);
     }
   }
-  this->pin_note_ = this->text_(col, this->pin_message_.empty() ? " " : this->pin_message_, FontRole::BODY_BOLD,
-                                this->pin_error_ ? p.error_text : p.muted);
-  lv_obj_set_style_max_width(this->pin_note_, this->m_.px(640), LV_PART_MAIN);
-  lv_label_set_long_mode(this->pin_note_, LV_LABEL_LONG_MODE_WRAP);
+  // .dash-lock-forgot: 16 px muted, centred under the pad.
+  lv_obj_t *hint = this->wrap_(col, lock_str(lock.forgot_pin, "pin_forgot"), FontRole::SMALL, p.muted);
+  lv_obj_set_width(hint, width);
+  lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_set_style_pad_top(hint, this->m_.px(12), LV_PART_MAIN);
+  lv_obj_set_style_text_line_space(hint, this->m_.px(4), LV_PART_MAIN);
+  this->update_pin_pad_();
 }
 
 // ---- settings overlay ------------------------------------------------------------

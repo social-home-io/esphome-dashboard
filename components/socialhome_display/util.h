@@ -15,6 +15,18 @@ namespace esphome::socialhome_display {
 /// Port the Social Home dashboard (and so the display API) listens on by default.
 static constexpr int DEFAULT_PORT = 8100;
 
+/// The household PIN's length — the tablet keypad's minlength / maxlength.
+static constexpr size_t PIN_MIN_DIGITS = 4;
+static constexpr size_t PIN_MAX_DIGITS = 6;
+
+/// `pin` after a PIN-pad key, as the tablet's keypad: a digit appends (up
+/// to PIN_MAX_DIGITS), "del" drops the last one, anything else changes
+/// nothing.
+std::string pin_after_key(const std::string &pin, const std::string &key);
+
+/// ✓ may send `pin`: it has at least PIN_MIN_DIGITS digits.
+bool pin_ready(const std::string &pin);
+
 /// Turn what a person typed into a base URL: "192.168.1.5" →
 /// "http://192.168.1.5:8100". Keeps an explicit scheme / port, drops a
 /// trailing slash and any path. Empty when nothing usable is left.

@@ -556,18 +556,26 @@ struct Board {
   std::optional<Picture> picture;
 };
 
-/// The 423 body of a privacy-locked panel.
+/// The 423 body of a privacy-locked panel: what the wall tablet's lock
+/// screen shows — household, clock, date, the PIN pad's words — never a
+/// person.
 struct LockScreen {
   int api_version{0};
   std::string household;
   std::string locale;
   Clock clock;
+  /// The night window is on: night palette and a dimmed backlight, as the
+  /// tablet's lock screen in `.dash-night`.
+  bool is_night{false};
   std::string locked;
   std::string pin_button;
   std::string enter_pin;
   std::string unlock;
   std::string del;
   std::string wrong_pin;
+  std::string tries_left;  ///< "Tries left: {n}"
+  std::string last_try;    ///< with one try left, instead of tries_left
+  std::string forgot_pin;  ///< under the PIN pad: who can change it
 };
 
 /// An error body ({"error": {"code", "detail", "params"}}).
@@ -607,9 +615,10 @@ enum class Scheme : uint8_t { LIGHT, DARK, NIGHT };
 /// board is up in the night window — the night clock, or the dashboard
 /// someone woke from it.
 ///
-/// The night board always draws with the night palette, in every mode (the
-/// browser's `.dash-night`). Everything else (lock screen, PIN pad,
-/// settings, setup and error screens): "light" and "dark" stay as they are,
+/// The night board — and the lock screen while its 423 body says `is_night`
+/// — always draws with the night palette, in every mode (the browser's
+/// `.dash-night`). Everything else (settings, setup and error screens, the
+/// lock screen by day): "light" and "dark" stay as they are,
 /// day and night; "auto" — a panel has no OS setting to follow — is light by
 /// day and dark in the night window. An unknown mode counts as "auto".
 Scheme scheme_for(const std::string &mode, bool night, bool night_board);

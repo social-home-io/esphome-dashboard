@@ -51,6 +51,22 @@ font:
     file: {type: gfonts, family: Roboto, weight: 300}
     size: ${font_size_night}
     glyphs: "0123456789:. APM"
+  # The lock screen (lock.html.j2 + dashboard.css): its clock with the PIN
+  # pad open, and its 18 px page text (PIN button, alert, hint).
+  - id: font_lock
+    file: {type: gfonts, family: Roboto, weight: 300}
+    size: ${font_size_lock}
+    glyphs: "0123456789:. APM"
+  - id: font_text
+    file: "gfonts://Roboto"
+    size: ${font_size_text}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - id: font_text_bold
+    file: {type: gfonts, family: Roboto, weight: bold}
+    size: ${font_size_text}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
 
 lvgl:
   default_font: font_body

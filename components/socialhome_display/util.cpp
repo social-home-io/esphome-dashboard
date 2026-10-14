@@ -529,4 +529,14 @@ void wedge_angles(float minute_deg, int minutes, int *start, int *end) {
   }
 }
 
+std::string pin_after_key(const std::string &pin, const std::string &key) {
+  if (key == "del")
+    return pin.empty() ? pin : pin.substr(0, pin.size() - 1);
+  if (key.size() == 1 && key[0] >= '0' && key[0] <= '9' && pin.size() < PIN_MAX_DIGITS)
+    return pin + key;
+  return pin;
+}
+
+bool pin_ready(const std::string &pin) { return pin.size() >= PIN_MIN_DIGITS; }
+
 }  // namespace esphome::socialhome_display

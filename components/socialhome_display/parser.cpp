@@ -708,6 +708,7 @@ ParseResult parse_lock(const char *data, size_t len, LockScreen &out) {
   out.household = s(root["household"]);
   out.locale = s(root["locale"]);
   out.clock = clock(root["clock"]);
+  out.is_night = b(root["is_night"]);
   JV st = root["strings"];
   out.locked = s(st["locked"]);
   out.pin_button = s(st["pin_button"]);
@@ -715,6 +716,9 @@ ParseResult parse_lock(const char *data, size_t len, LockScreen &out) {
   out.unlock = s(st["unlock"]);
   out.del = s(st["delete"]);
   out.wrong_pin = s(st["wrong_pin"]);
+  out.tries_left = s(st["tries_left"]);
+  out.last_try = s(st["last_try"]);
+  out.forgot_pin = s(st["forgot_pin"]);
   return ParseResult::OK;
 }
 

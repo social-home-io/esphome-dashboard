@@ -79,7 +79,9 @@ const std::map<std::string, std::string> &builtin() {
       {"unlock", "Unlock"},
       {"pin_button", "PIN"},
       {"wrong_pin", "Wrong PIN"},
-      {"pin_remaining", "{n} tries left"},
+      {"pin_remaining", "Tries left: {n}"},
+      {"pin_last_try", "Last try \xE2\x80\x94 one more wrong PIN signs this screen out."},
+      {"pin_forgot", "Forgot the PIN? An admin can change it in Social Home under Admin \xE2\x80\xBA Dashboard."},
       {"pin_wait", "Too many tries. Try again in {n} s."},
       {"pin_offline", "Can't reach Social Home. Try again."},
       {"lock", "Lock screen"},
@@ -100,6 +102,14 @@ bool is_panel_string(const std::string &key) { return builtin().count(key) != 0;
 
 const std::string &panel_string(const Theme &theme, const char *key) {
   return theme.str(key, builtin_string(key));
+}
+
+std::string pin_tries_note(int remaining, const std::string &tries_left, const std::string &last_try) {
+  if (remaining < 0)
+    return "";
+  if (remaining <= 1)
+    return last_try;
+  return fill_placeholder(tries_left, "n", std::to_string(remaining));
 }
 
 std::string fill_placeholder(const std::string &text, const char *name, const std::string &value) {

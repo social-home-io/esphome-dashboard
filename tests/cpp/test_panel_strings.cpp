@@ -77,11 +77,26 @@ TEST(theme_fixture_covers_the_panel_strings) {
                           "update_text", "map_placeholder", "map_none", "settings_title", "settings_server",
                           "settings_panel", "settings_firmware", "forget", "forget_confirm", "cancel", "close",
                           "credits", "improv_title", "improv_allow", "server_text_found", "found_title",
-                          "found_looking", "found_none", "claim_sealed"}) {
+                          "found_looking", "found_none", "claim_sealed", "pin_last_try", "pin_forgot"}) {
     CHECK(is_panel_string(key));
     CHECK(t.str(key, MISSING) != MISSING);
   }
   CHECK_EQ(fill_placeholder(panel_string(t, "pin_remaining"), "n", "4"), std::string("Tries left: 4"));
+  // The built-in English matches the server's.
+  for (const char *key : {"pin_remaining", "pin_last_try", "pin_forgot"})
+    CHECK_EQ(builtin_string(key), t.str(key, MISSING));
   CHECK_EQ(fill_placeholder(panel_string(t, "pin_wait"), "n", "30"),
            std::string("Too many tries. Try again in 30 s."));
+}
+
+TEST(pin_tries_note_like_the_tablet) {
+  const std::string tries = "Tries left: {n}", last = "Last try";
+  CHECK_EQ(pin_tries_note(4, tries, last), std::string("Tries left: 4"));
+  CHECK_EQ(pin_tries_note(2, tries, last), std::string("Tries left: 2"));
+  // One left: the warning instead of a count (0 is never sent; it reads
+  // the same).
+  CHECK_EQ(pin_tries_note(1, tries, last), last);
+  CHECK_EQ(pin_tries_note(0, tries, last), last);
+  // No count from the server: no line.
+  CHECK_EQ(pin_tries_note(-1, tries, last), std::string(""));
 }

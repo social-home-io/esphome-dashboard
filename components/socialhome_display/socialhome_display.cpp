@@ -49,6 +49,8 @@ static constexpr uint32_t THEME_MS = 15 * 60 * 1000;
 static constexpr uint32_t OFFLINE_RETRY_MS = 15000;
 /// How long a tap shows the dashboard at night.
 static constexpr uint32_t NIGHT_PEEK_MS = 60000;
+/// How long an untouched PIN pad stays open (lock.js: a quiet minute).
+static constexpr uint32_t PIN_PAD_IDLE_MS = 60000;
 /// How long a failed Connect from Home Assistant stays on screen before a
 /// paired panel goes back to its dashboard.
 static constexpr uint32_t CLAIM_ERROR_MS = 30000;
@@ -310,6 +312,7 @@ void SocialHomeDisplay::set_mode_(Mode mode) {
   this->pin_.clear();
   this->pin_open_ = false;
   this->pin_message_.clear();
+  this->pin_detail_.clear();
   this->pin_error_ = false;
   switch (mode) {
     case Mode::PAIRING:
@@ -785,6 +788,7 @@ void SocialHomeDisplay::request_unlock_() {
   this->pin_.clear();
   if (!this->api_.submit(std::move(request)))
     this->unlock_request_ = 0;
+  this->update_pin_pad_();  // ⌫ / ✓ fade while the PIN is checked
 }
 
 void SocialHomeDisplay::handle_unlock_(HttpResponse &response) {
@@ -793,6 +797,7 @@ void SocialHomeDisplay::handle_unlock_(HttpResponse &response) {
     return;
   const uint32_t now = millis();
   const ApiError error = parse_error(response.body.data(), response.body.size());
+  this->pin_detail_.clear();
   switch (response.status) {
     case 200:
       if (parse_unlocked(response.body.data(), response.body.size()) == ParseResult::OK) {
@@ -804,12 +809,13 @@ void SocialHomeDisplay::handle_unlock_(HttpResponse &response) {
       break;
     case 400:
     case 403: {
-      // DISPLAY_PIN_WRONG: say so, with the tries left before the next
-      // wrong PIN unpairs the panel.
-      std::string text = this->lock_.wrong_pin.empty() ? this->str_("wrong_pin") : this->lock_.wrong_pin;
-      if (error.remaining >= 0)
-        text += " \xC2\xB7 " + fill_placeholder(this->str_("pin_remaining"), "n", std::to_string(error.remaining));
-      this->pin_message_ = text;
+      // DISPLAY_PIN_WRONG, as on the tablet: "Wrong PIN", and bold under it
+      // the tries left — or, with one left, that the next wrong PIN unpairs.
+      const LockScreen &lock = this->lock_;
+      this->pin_message_ = lock.wrong_pin.empty() ? this->str_("wrong_pin") : lock.wrong_pin;
+      this->pin_detail_ = pin_tries_note(error.remaining,
+                                         lock.tries_left.empty() ? this->str_("pin_remaining") : lock.tries_left,
+                                         lock.last_try.empty() ? this->str_("pin_last_try") : lock.last_try);
       break;
     }
     case 401:
@@ -1077,6 +1083,12 @@ void SocialHomeDisplay::tick_idle_() {
   if (disp == nullptr)
     return;
   const uint32_t inactive = lv_display_get_inactive_time(disp);
+  if (this->mode_ == Mode::LOCKED && this->pin_open_ && this->unlock_request_ == 0 && inactive > PIN_PAD_IDLE_MS) {
+    // As the tablet's lock screen: a PIN pad left alone for a minute goes
+    // away (with any half-typed PIN).
+    ESP_LOGD(TAG, "Lock: closing the idle PIN pad");
+    this->close_pin_pad_();
+  }
   if (this->mode_ != Mode::RUNNING || this->board_ == nullptr)
     return;
   const Settings &settings = this->board_->header.settings;
@@ -1120,6 +1132,8 @@ void SocialHomeDisplay::apply_backlight_() {
   else if (this->mode_ == Mode::RUNNING && this->board_ != nullptr && this->board_->header.is_night &&
            !this->night_peek_)
     target = this->night_brightness_;
+  else if (this->mode_ == Mode::LOCKED && this->lock_.is_night && !this->pin_open_)
+    target = this->night_brightness_;  // the locked screen at night; the PIN pad lights up
   if (target == this->last_brightness_)
     return;
   this->last_brightness_ = target;
@@ -1155,7 +1169,8 @@ void SocialHomeDisplay::render_() {
   this->server_keyboard_ = nullptr;
   this->found_list_ = nullptr;
   this->pin_dots_ = nullptr;
-  this->pin_note_ = nullptr;
+  this->pin_del_ = nullptr;
+  this->pin_ok_ = nullptr;
   lv_obj_clean(screen);
   this->payloads_.clear();
   if (this->clear_images_) {
