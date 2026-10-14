@@ -92,8 +92,10 @@ def compare(old_dir: str, new_dir: str, out: str, threshold: int = 16) -> str:
             oc = metrics.offset_changes(do.get("offsets", []), dn.get("offsets", []))
             moved_cells.append(str(len(oc)))
             for c in oc:
-                details.append(f"- {name} offset: \"{c['text'][:40]}\" Δy {c['old_dy']:+g} → "
-                               f"{c['new_dy']:+g}, Δx {c['old_dx']:+g} → {c['new_dx']:+g}")
+                details.append(f"- {name} offset: \"{c['text'][:40]}\" " + ", ".join(
+                    f"{k} {c['old_' + f]:+g} → {c['new_' + f]:+g}"
+                    for k, f in (("Δx", "dx"), ("Δy", "dy"), ("Δw", "dw"), ("Δh", "dh"))
+                    if c["old_" + f] != c["new_" + f]))
         else:
             moved_cells = ["–", "–", "–"]
         lines.append(f"| {name} | " + " | ".join(cells + moved_cells) + " |")

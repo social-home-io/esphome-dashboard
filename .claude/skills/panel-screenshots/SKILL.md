@@ -82,9 +82,10 @@ error or Ctrl-C:
    wouldn't fit in the current minute it waits for the next one; if the
    minute still turned between the two shots it takes the pair again.
 
-Takes ~1 min per locale × scheme for the plain screens; the lock flow and
-offline add ~3 min each combination (offline waits for the browser's two
-failed 30 s refreshes).
+About 5 min per locale × scheme with every screen (the full `en,de` ×
+`light,dark` set: ~20 min, 54 shots); the plain screens alone take ~1 min.
+Offline is the slow one: it waits for the browser's two failed 30 s
+refreshes.
 
 ## Output (fixed names — `scripts/screenshots/naming.py`)
 
@@ -153,7 +154,9 @@ failed 30 s refreshes).
   screen for 60 s — a stray click before the shot shows the day board.
 - **Minute boundaries** change the clock, "N min ago", NOW / NEXT and NEW
   badges. The script waits for a quiet minute and retakes a pair that
-  straddles one; `offsets.md` lists both minutes.
+  straddles one; `offsets.md` lists both minutes. The browser's lock page is
+  drawn by the last PIN answer and its clock ticks on its own schedule, so
+  the lock steps wait for a quiet minute *before* the PIN is sent.
 - **Wait for pictures:** the script waits for fonts and every `<img>` in the
   browser and gives the panel 7 s on the map (it fetches and decodes a PNG).
   A blank avatar or map on one side is a timing problem first.
