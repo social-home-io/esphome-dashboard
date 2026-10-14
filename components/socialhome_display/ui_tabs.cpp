@@ -126,13 +126,23 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
   const int map_h = this->m_.map_height();
   const lv_image_dsc_t *picture = map.image.has_value() ? this->map_.picture(this->map_path_()) : nullptr;
   if (picture != nullptr) {
-    lv_obj_t *img = lv_image_create(row);
+    // .dash-mp-box: a 1 px border round the picture, which fills the rest
+    // (map_path_ asks for exactly that size, so the server frames the
+    // same area as for the browser's box).
+    lv_obj_t *box = this->box_(row);
+    lv_obj_set_size(box, map_w, map_h);
+    lv_obj_set_style_bg_color(box, lv_color_hex(p.bg), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(box, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(box, lv_color_hex(p.border), LV_PART_MAIN);
+    lv_obj_set_style_border_width(box, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(box, this->m_.radius(), LV_PART_MAIN);
+    lv_obj_t *img = lv_image_create(box);
     lv_image_set_src(img, picture);
-    lv_obj_set_size(img, map_w, map_h);
+    lv_obj_set_size(img, map_w - 2, map_h - 2);
     lv_image_set_inner_align(img, LV_IMAGE_ALIGN_CENTER);
     lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
-    // Rounded like the cards (LVGL clips an image to its radius).
-    lv_obj_set_style_radius(img, this->m_.radius(), LV_PART_MAIN);
+    // Rounded inside the border (LVGL clips an image to its radius).
+    lv_obj_set_style_radius(img, std::max(0, this->m_.radius() - 1), LV_PART_MAIN);
   } else {
     // Loading, no tiles right now (503), or a server without the picture.
     lv_obj_t *area = this->card_(row);
@@ -160,10 +170,13 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
     const Person *person = this->board_->header.find_person(spot.person);
     lv_obj_t *frame = this->box_(item);
     lv_obj_set_size(frame, face, face);
-    lv_obj_set_style_radius(frame, this->m_.px(14), LV_PART_MAIN);
+    lv_obj_set_style_radius(frame, this->m_.px(16), LV_PART_MAIN);
     lv_obj_set_style_border_width(frame, this->m_.px(4), LV_PART_MAIN);
-    lv_obj_set_style_border_color(
-        frame, lv_color_hex(person != nullptr ? person->color.or_else(p.border) : p.border), LV_PART_MAIN);
+    // The frame in --kf: the person's colour at 3:1 on the bubble.
+    const uint32_t frame_color = person != nullptr && person->color.valid
+                                     ? map_frame_color(person->color.rgb, this->scheme_() != Scheme::LIGHT)
+                                     : p.border;
+    lv_obj_set_style_border_color(frame, lv_color_hex(frame_color), LV_PART_MAIN);
     lv_obj_t *avatar = this->avatar_(frame, spot.person, face - this->m_.px(12));
     lv_obj_center(avatar);
     // A spot over an hour old greys and fades its whole face — frame,

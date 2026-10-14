@@ -156,7 +156,10 @@ struct Metrics {
   int tab_height() const { return px(64); }
   /// The Map tab's picture area (the browser's map frame) and its list.
   int map_list_width() const { return px(336); }
-  int map_height() const { return px(560); }
+  /// `.dash-mp-tab`: calc(100dvh - 104px), at least 420 px — taller than the
+  /// screen under the tabs and banners, so the board scrolls as the
+  /// browser's page does. The box's 1 px border is outside the picture.
+  int map_height() const;
   int tap_min() const { return px(48); }
 
   /// Columns of at least `min_col` design px that fit in `avail` px.
@@ -177,21 +180,69 @@ double contrast_ratio(uint32_t a, uint32_t b);
 /// contrast.ink_on (the rule behind every lane's `ink`).
 uint32_t ink_on(uint32_t fill);
 
+/// `color` moved `weight` (0 … 1) of the way to `toward`, channel by
+/// channel in sRGB, rounded half to even — Social Home's contrast.mix_srgb.
+uint32_t mix_srgb(uint32_t color, uint32_t toward, double weight);
+
+/// A person's Map frame (the browser's `--kf`, Social Home's
+/// contrast.frame_color): their colour nudged toward black on the light
+/// bubble (#ffffff) or white on the dark one (#3d3a35) in 5 % steps until
+/// it reaches 3:1 against that bubble. The display API sends only the
+/// colour, so the panel derives the frame as the server does.
+uint32_t map_frame_color(uint32_t color, bool dark);
+
 /// How a bar on the Today timeline is painted.
 struct BarStyle {
-  uint32_t fill;   ///< the bar as drawn, already composited over the card
-  uint32_t ink;    ///< its label colour, picked against that fill
-  uint8_t alpha;   ///< how much of `color` is in `fill` (255: all of it)
+  uint32_t fill;       ///< the bar as drawn, already composited over the card
+  uint32_t ink;        ///< its label colour, picked against that fill
+  uint8_t alpha;       ///< how much of `color` is in `fill` (255: all of it)
+  uint8_t stripe_opa;  ///< white school stripes over the fill (0: none)
 };
 
-/// A timeline bar in the lane's `color` on the card `surface`. School is
-/// toned down (70 %, the panel's stand-in for the browser's stripes) and a
-/// past bar is faded to half, as the browser's `.dash-past`. The fade goes
-/// into the fill — not over the label — and a faded bar's label is picked
-/// against the fill actually drawn (ink_on), so a past bar on a dark card
-/// keeps a light label instead of the lane's dark ink faded into the dark.
-/// An unfaded bar keeps the lane's own `ink` (when the server sent one).
+/// A timeline bar in the lane's `color` on the card `surface`, as the
+/// browser's `.dash-block`: a past bar is faded to half (`.dash-past`, the
+/// server's --kp). The fade goes into the fill — not over the label — and a
+/// faded bar's label is picked against the fill actually drawn (ink_on), so
+/// a past bar on a dark card keeps a light label instead of the lane's dark
+/// ink faded into the dark. An unfaded bar keeps the lane's own `ink` (when
+/// the server sent one). School is hatched (`.dash-block-school`): white
+/// stripes at 16 %, 8 % on a past bar — `stripe_opa`, drawn with
+/// stripe_coverage.
 BarStyle bar_style(uint32_t color, bool has_ink, uint32_t ink, uint32_t surface, bool school, bool past);
+
+/// `.dash-block-school`'s stripes: repeating-linear-gradient(135deg, white
+/// 0 8px, transparent 8px 16px), from the bar's top-left corner. Along x a
+/// period is 16·√2 px, so a tile `stripe_tile_width(scale)` wide holds
+/// eight of them (16.0 px each across the stripes) and repeats seamlessly.
+int stripe_tile_width(float scale);
+
+/// How much of each pixel (0 … 255, row-major) of a `w` × `h` tile the
+/// stripes cover: anti-aliased, eight periods across `w`.
+std::vector<uint8_t> stripe_coverage(int w, int h);
+
+/// 0xRRGGBB as LVGL's RGB565 (the panel's colour depth), channels cut as
+/// lv_color_to_u16 does.
+uint16_t rgb565(uint32_t rgb);
+
+/// A school bar's stripe tile, opaque: `fill` with white at `opa` ×
+/// `coverage` over it, composited at full precision and then cut to RGB565.
+/// Blending a translucent white tile on the 16-bit screen instead rounds
+/// the 8 % stripes of a past bar away on light fills.
+std::vector<uint16_t> stripe_tile_rgb565(uint32_t fill, uint8_t opa, const std::vector<uint8_t> &coverage);
+
+/// Today's timeline lanes (`.dash-lane` / `.dash-track`), design px: a lane
+/// is its 1 px top border, 6 px padding, the track and 6 px again; the
+/// track is 44 px for one row, 48 px more per extra row (`.dash-rows-N`),
+/// a bar 42 px high at the top of its row.
+struct LaneGeometry {
+  static constexpr int BORDER = 1;
+  static constexpr int PAD = 6;
+  static constexpr int ROW_PITCH = 48;
+  static constexpr int BAR_HEIGHT = 42;
+  static constexpr int TICKS_HEIGHT = 28;  ///< `.dash-ticks`: 1.75rem
+  static int track_height(int rows);
+  static int lane_height(int rows);
+};
 
 /// How much of a picture (emoji, face) is left when it recedes, as the
 /// browser's `opacity` — which only ever sits on pictures, never on words.

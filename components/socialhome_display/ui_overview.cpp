@@ -99,6 +99,9 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
     lv_obj_t *card = this->section_card_(parent, t.label);
     lv_obj_set_width(card, LV_PCT(100));
     if (t.mode == "timeline" && t.timeline.has_value()) {
+      // .dash-today: 16 px above and below; the label's 8 px margin.
+      lv_obj_set_style_pad_ver(card, this->m_.px(16), LV_PART_MAIN);
+      lv_obj_set_style_pad_row(card, this->m_.px(8), LV_PART_MAIN);
       this->build_timeline_(card, *t.timeline);
     } else if (t.mode == "list") {
       for (const auto &row : t.list)
@@ -210,44 +213,82 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
   }
 }
 
+const lv_image_dsc_t *SocialHomeDisplay::stripe_tile_(uint32_t fill, uint8_t opa, int h) {
+  for (const auto &tile : this->stripes_) {
+    if (tile->fill == fill && tile->opa == opa && static_cast<int>(tile->dsc.header.h) == h)
+      return &tile->dsc;
+  }
+  if (this->stripes_.size() >= MAX_STRIPE_TILES)
+    return nullptr;  // a plain bar rather than unbounded memory
+  const int w = stripe_tile_width(this->m_.scale);
+  if (this->stripe_coverage_.size() != static_cast<size_t>(w) * h)
+    this->stripe_coverage_ = stripe_coverage(w, h);
+  auto tile = std::make_unique<StripeTile>();
+  tile->fill = fill;
+  tile->opa = opa;
+  tile->pixels = stripe_tile_rgb565(fill, opa, this->stripe_coverage_);
+  tile->dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+  tile->dsc.header.cf = LV_COLOR_FORMAT_RGB565;
+  tile->dsc.header.w = w;
+  tile->dsc.header.h = h;
+  tile->dsc.header.stride = w * 2;
+  tile->dsc.data = reinterpret_cast<const uint8_t *>(tile->pixels.data());
+  tile->dsc.data_size = tile->pixels.size() * 2;
+  this->stripes_.push_back(std::move(tile));
+  return &this->stripes_.back()->dsc;
+}
+
 void SocialHomeDisplay::build_timeline_(lv_obj_t *parent, const Timeline &line) {
   const Palette &p = this->palette_();
   // The "now" mark and line are live data: grey (the line faded) offline.
   const LiveStyle live = this->live_();
   const int width = main_width(this->m_, this->board_->header.rail.shown);
   const int inner = width - 2 * this->m_.card_pad() - 2;
-  const int name_w = this->m_.px(170);
-  const int track_w = inner - name_w;
-  const int lane_h = this->m_.px(56);
-  const int block_h = this->m_.px(42);
+  // .dash-lane: the name column (10rem), a 12 px gap, then the body with
+  // .dash-track / .dash-ticks 12 px in from both of its edges.
+  const int name_w = this->m_.px(160);
+  const int track_inset = this->m_.px(12);
+  const int track_x = name_w + this->m_.px(12) + track_inset;
+  const int track_w = inner - track_x - track_inset;
+  const int pad = this->m_.px(LaneGeometry::PAD);
+  const int pitch = this->m_.px(LaneGeometry::ROW_PITCH);
+  const int block_h = this->m_.px(LaneGeometry::BAR_HEIGHT);
 
-  // Hour ticks and the "now" marker.
-  lv_obj_t *head = this->box_(parent);
-  lv_obj_set_size(head, inner, this->m_.px(34));
+  // The lanes stack with no gap between them (.dash-timeline), right under
+  // the ticks.
+  lv_obj_t *lanes = this->column_(parent, 0);
+  lv_obj_set_width(lanes, inner);
+
+  // Hour ticks and the "now" marker (.dash-ticks, 28 px).
+  lv_obj_t *head = this->box_(lanes);
+  lv_obj_set_size(head, inner, this->m_.px(LaneGeometry::TICKS_HEIGHT));
   lv_obj_add_flag(head, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
   for (const auto &tick : line.ticks) {
     lv_obj_t *label = this->text_(head, tick.label, FontRole::SMALL, p.muted);
     lv_obj_update_layout(label);
-    int x = name_w + Metrics::pct(tick.x, track_w) - lv_obj_get_width(label) / 2;
+    int x = track_x + Metrics::pct(tick.x, track_w) - lv_obj_get_width(label) / 2;
     x = std::min(x, inner - static_cast<int>(lv_obj_get_width(label)));
-    lv_obj_set_pos(label, x, this->m_.px(6));
+    lv_obj_set_pos(label, x, 0);
   }
   if (line.now_x.has_value()) {
     lv_obj_t *now = this->pill_(head, line.now_label, live.accent, live.accent_ink, FontRole::LABEL);
     lv_obj_update_layout(now);
-    lv_obj_set_pos(now, name_w + Metrics::pct(*line.now_x, track_w) - lv_obj_get_width(now) / 2, this->m_.px(4));
+    lv_obj_set_pos(now, track_x + Metrics::pct(*line.now_x, track_w) - lv_obj_get_width(now) / 2, 0);
   }
 
   for (const auto &lane : line.lanes) {
-    const int height = std::max(1, lane.rows) * lane_h;
-    lv_obj_t *row = this->box_(parent);
+    // .dash-lane: a 1 px top border, 6 px padding around the track.
+    const int track_h = this->m_.px(LaneGeometry::track_height(lane.rows));
+    const int height = this->m_.px(LaneGeometry::BORDER) + 2 * pad + track_h;
+    lv_obj_t *row = this->box_(lanes);
     lv_obj_set_size(row, inner, height);
     lv_obj_set_style_border_side(row, LV_BORDER_SIDE_TOP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(row, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_width(row, this->m_.px(LaneGeometry::BORDER), LV_PART_MAIN);
     lv_obj_set_style_border_color(row, lv_color_hex(p.border), LV_PART_MAIN);
 
     lv_obj_t *who = this->row_(row, this->m_.px(8));
-    lv_obj_set_size(who, name_w - this->m_.px(8), height);
+    lv_obj_set_size(who, name_w, track_h);
+    lv_obj_set_pos(who, 0, pad);
     this->avatar_(who, lane.person, this->m_.avatar_sm());
     lv_obj_t *names = this->column_(who, 0);
     lv_obj_set_flex_grow(names, 1);
@@ -262,23 +303,31 @@ void SocialHomeDisplay::build_timeline_(lv_obj_t *parent, const Timeline &line) 
     }
 
     lv_obj_t *track = this->box_(row);
-    lv_obj_set_size(track, track_w, height);
-    lv_obj_set_pos(track, name_w, 0);
+    lv_obj_set_size(track, track_w, track_h);
+    lv_obj_set_pos(track, track_x, pad);
     const uint32_t color = lane.color.or_else(p.accent);
     for (const auto &block : lane.blocks) {
       lv_obj_t *b = this->row_(track, this->m_.px(6));
       int x = Metrics::pct(block.x, track_w);
       int w = std::max(this->m_.px(18), Metrics::pct(block.w, track_w));
       lv_obj_set_size(b, std::min(w, track_w - x), block_h);
-      lv_obj_set_pos(b, x, block.row * lane_h + (lane_h - block_h) / 2);
-      // Faded bars (school, past) are composited here, so the label is
-      // picked against the colour actually drawn — never faded itself.
+      lv_obj_set_pos(b, x, block.row * pitch);
+      // A past bar's fade is composited here, so the label is picked
+      // against the colour actually drawn — never faded itself.
       const BarStyle style =
           bar_style(color, lane.ink.valid, lane.ink.rgb, p.surface, block.kind == "school", block.past);
       lv_obj_set_style_bg_color(b, lv_color_hex(style.fill), LV_PART_MAIN);
       lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_MAIN);
-      lv_obj_set_style_radius(b, this->m_.px(6), LV_PART_MAIN);
+      lv_obj_set_style_radius(b, this->m_.px(8), LV_PART_MAIN);
       lv_obj_set_style_pad_hor(b, this->m_.px(8), LV_PART_MAIN);
+      const lv_image_dsc_t *stripes =
+          style.stripe_opa > 0 ? this->stripe_tile_(style.fill, style.stripe_opa, block_h) : nullptr;
+      if (stripes != nullptr) {
+        // .dash-block-school's 135° stripes, tiled from the bar's corner
+        // and clipped to its rounded edge.
+        lv_obj_set_style_bg_image_src(b, stripes, LV_PART_MAIN);
+        lv_obj_set_style_bg_image_tiled(b, true, LV_PART_MAIN);
+      }
       lv_obj_set_flex_align(b, block.narrow ? LV_FLEX_ALIGN_CENTER : LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                             LV_FLEX_ALIGN_CENTER);
       if (!block.icon.empty()) {
@@ -293,11 +342,15 @@ void SocialHomeDisplay::build_timeline_(lv_obj_t *parent, const Timeline &line) 
       }
     }
     if (line.now_x.has_value()) {
-      lv_obj_t *now = this->box_(track);
-      lv_obj_set_size(now, std::max(2, this->m_.px(3)), height);
-      lv_obj_set_pos(now, Metrics::pct(*line.now_x, track_w), 0);
+      // .dash-now-line: 3 px, 6 px past the track at both ends — through
+      // the lane's padding, so on the lane (a child is clipped to its
+      // parent), over the bars.
+      lv_obj_t *now = this->box_(row);
+      lv_obj_set_size(now, std::max(2, this->m_.px(3)), track_h + 2 * pad);
+      lv_obj_set_pos(now, track_x + Metrics::pct(*line.now_x, track_w) - this->m_.px(1), 0);
       lv_obj_set_style_bg_color(now, lv_color_hex(live.accent), LV_PART_MAIN);
       lv_obj_set_style_bg_opa(now, live.picture_opa, LV_PART_MAIN);
+      lv_obj_set_style_radius(now, this->m_.px(2), LV_PART_MAIN);
     }
   }
 }

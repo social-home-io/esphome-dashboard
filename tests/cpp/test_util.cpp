@@ -347,17 +347,106 @@ TEST(bar_past_light_gets_dark_label) {
   CHECK_EQ(bar_style(0xC44D72, true, 0x000000, LIGHT_SURFACE, false, true).ink, 0x000000u);
 }
 
-TEST(bar_school_is_toned_down) {
-  // School at 70 %: Leo's gold over the dark card is too dark for black.
+TEST(bar_school_is_striped_not_faded) {
+  // As .dash-block-school: the lane's own colour and ink, with white
+  // stripes at 16 % on top — 8 % once past, over the half-faded fill.
   BarStyle s = bar_style(0xAD780C, true, 0x000000, DARK_SURFACE, true, false);
-  CHECK_EQ(static_cast<int>(s.alpha), 178);
-  CHECK_EQ(s.fill, blend_rgb(0xAD780C, DARK_SURFACE, 178));
-  CHECK(contrast_ratio(s.ink, s.fill) >= contrast_ratio(s.ink ^ 0xFFFFFFu, s.fill));
-  // Past school: both fades.
+  CHECK_EQ(static_cast<int>(s.alpha), 255);
+  CHECK_EQ(s.fill, 0xAD780Cu);
+  CHECK_EQ(s.ink, 0x000000u);
+  CHECK_EQ(static_cast<int>(s.stripe_opa), 41);
   BarStyle past = bar_style(0xAD780C, true, 0x000000, DARK_SURFACE, true, true);
-  CHECK(past.alpha < s.alpha);
+  CHECK_EQ(past.fill, blend_rgb(0xAD780C, DARK_SURFACE, 127));
   CHECK_EQ(past.ink, 0xFFFFFFu);
-  CHECK_EQ(bar_style(0x3F7D57, true, 0xFFFFFF, DARK_SURFACE, true, false).ink, 0xFFFFFFu);
+  CHECK_EQ(static_cast<int>(past.stripe_opa), 20);
+  // Anything else has no stripes.
+  CHECK_EQ(static_cast<int>(bar_style(0xAD780C, true, 0x000000, DARK_SURFACE, false, false).stripe_opa), 0);
+  CHECK_EQ(static_cast<int>(bar_style(0xAD780C, true, 0x000000, DARK_SURFACE, false, true).stripe_opa), 0);
+}
+
+TEST(stripe_tile_repeats_seamlessly) {
+  // Eight periods of 16·√2 px across: 181 px at 1280 × 800.
+  CHECK_EQ(stripe_tile_width(1.0f), 181);
+  CHECK_EQ(stripe_tile_width(1.5f), 272);
+  const int w = stripe_tile_width(1.0f), h = 42;
+  std::vector<uint8_t> c = stripe_coverage(w, h);
+  CHECK_EQ(static_cast<int>(c.size()), w * h);
+  // The stripe starts in the top-left corner (the gradient's 0 %) and is
+  // gone half a period on: x + y ≈ 3/4 of 22.6 px.
+  CHECK_EQ(static_cast<int>(c[0]), 255);
+  CHECK_EQ(static_cast<int>(c[16]), 0);
+  // Constant along the 45° stripe direction (x + y fixed).
+  CHECK_EQ(static_cast<int>(c[1 * w + 5]), static_cast<int>(c[3 * w + 3]));
+  // Half the area is striped.
+  long sum = 0;
+  for (uint8_t v : c)
+    sum += v;
+  const double mean = static_cast<double>(sum) / c.size();
+  CHECK(mean > 120 && mean < 135);
+  // No seam where tiles meet: the last column at row y lies on the same
+  // stripe as the first column one row up (x + y ≡ y - 1 either way).
+  for (int y = 1; y < h; y++)
+    CHECK_EQ(static_cast<int>(c[static_cast<size_t>(y) * w + (w - 1)]), static_cast<int>(c[static_cast<size_t>(y - 1) * w]));
+  CHECK(stripe_coverage(0, 5).empty());
+}
+
+TEST(stripe_tile_survives_the_16_bit_screen) {
+  CHECK_EQ(rgb565(0xFFFFFF), 0xFFFFu);
+  CHECK_EQ(rgb565(0x000000), 0x0000u);
+  CHECK_EQ(rgb565(0xF80000), 0xF800u);
+  CHECK_EQ(rgb565(0x00FC00), 0x07E0u);
+  CHECK_EQ(rgb565(0x0000F8), 0x001Fu);
+  // Leo's past school bar on the light card: white at 8 % composited
+  // before the cut still shows as a stripe.
+  const uint32_t fill = bar_style(0xC99A3D, true, 0x000000, LIGHT_SURFACE, true, true).fill;
+  std::vector<uint16_t> t = stripe_tile_rgb565(fill, 20, {0, 255, 128});
+  CHECK_EQ(t.size(), 3u);
+  CHECK_EQ(t[0], rgb565(fill));
+  CHECK_EQ(t[1], rgb565(blend_rgb(0xFFFFFF, fill, 20)));
+  CHECK(t[1] != t[0]);
+  CHECK_EQ(t[2], rgb565(blend_rgb(0xFFFFFF, fill, 10)));
+}
+
+TEST(map_frame_matches_social_home) {
+  // contrast.mix_srgb, Python's round() included (half to even).
+  CHECK_EQ(mix_srgb(0x000000, 0xFFFFFF, 0.5), 0x808080u);
+  CHECK_EQ(mix_srgb(0x123456, 0x000000, 0.0), 0x123456u);
+  CHECK_EQ(mix_srgb(0x123456, 0xFFFFFF, 1.0), 0xFFFFFFu);
+  CHECK_EQ(mix_srgb(0x050000, 0x000000, 0.5), 0x020000u);  // 2.5 -> 2
+  CHECK_EQ(mix_srgb(0x070000, 0x000000, 0.5), 0x040000u);  // 3.5 -> 4
+  // Social Home's test_frame_colors_match_the_design table.
+  const uint32_t table[][3] = {
+      {0x3E63DD, 0x3E63DD, 0x6582E4}, {0x1F4A3A, 0x1F4A3A, 0x799289}, {0xC8922E, 0xBE8B2C, 0xC8922E},
+      {0xD2552F, 0xD2552F, 0xD66644}, {0x12A594, 0x12A594, 0x12A594}, {0x8E4EC6, 0x8E4EC6, 0xA571D1},
+  };
+  for (const auto &row : table) {
+    CHECK_EQ(map_frame_color(row[0], false), row[1]);
+    CHECK_EQ(map_frame_color(row[0], true), row[2]);
+  }
+  // Every colour reaches 3:1 on both bubbles.
+  for (uint32_t r = 0; r <= 0xFF; r += 0x33)
+    for (uint32_t g = 0; g <= 0xFF; g += 0x33)
+      for (uint32_t b = 0; b <= 0xFF; b += 0x33) {
+        const uint32_t c = (r << 16) | (g << 8) | b;
+        CHECK(contrast_ratio(map_frame_color(c, false), 0xFFFFFF) >= 3.0);
+        CHECK(contrast_ratio(map_frame_color(c, true), 0x3D3A35) >= 3.0);
+      }
+}
+
+TEST(lane_geometry_matches_the_tablet) {
+  // .dash-lane: 1 px border + 6 px + .dash-track (44 / 92 / 140) + 6 px.
+  CHECK_EQ(LaneGeometry::track_height(1), 44);
+  CHECK_EQ(LaneGeometry::track_height(2), 92);
+  CHECK_EQ(LaneGeometry::track_height(3), 140);
+  CHECK_EQ(LaneGeometry::track_height(0), 44);
+  CHECK_EQ(LaneGeometry::lane_height(1), 57);
+  CHECK_EQ(LaneGeometry::lane_height(2), 105);
+}
+
+TEST(map_height_matches_the_map_tab) {
+  // .dash-mp-tab: calc(100dvh - 104px), never under 420 px.
+  CHECK_EQ(Metrics::compute(1280, 800, 1.0f).map_height(), 696);
+  CHECK_EQ(Metrics::compute(1920, 1200, 1.0f).map_height(), 1044);
 }
 
 TEST(bar_label_always_the_better_ink) {

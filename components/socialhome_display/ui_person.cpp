@@ -478,7 +478,8 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
       lv_obj_set_flex_align(item, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
       lv_obj_t *face = this->avatar_(item, msg.person, this->m_.px(88));
       speech_badge(face, msg.is_new);
-      this->inline_(item, msg.caption, FontRole::SMALL, p.muted, this->m_.px(170));
+      // .dash-pv-msg: at most 11rem wide, its caption one line with "…".
+      this->inline_(item, msg.caption, FontRole::SMALL, p.muted, this->m_.px(176));
     }
   }
 

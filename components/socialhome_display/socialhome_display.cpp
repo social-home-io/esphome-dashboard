@@ -899,8 +899,9 @@ std::string SocialHomeDisplay::map_path_() const {
   const MapImage &image = *this->board_->map.image;
   const bool rail = this->board_->header.rail.shown;
   const int main = this->m_.width - (rail ? this->m_.rail_width() : 0) - 2 * this->m_.pad();
-  const int w = std::clamp(main - this->m_.map_list_width() - this->m_.gap(), 200, 1920);
-  const int h = std::clamp(this->m_.map_height(), 200, 1200);
+  // The picture inside the map box's 1 px border (.dash-mp-map).
+  const int w = std::clamp(main - this->m_.map_list_width() - this->m_.gap() - 2, 200, 1920);
+  const int h = std::clamp(this->m_.map_height() - 2, 200, 1200);
   return image.url + "?w=" + std::to_string(w) + "&h=" + std::to_string(h) +
          "&scheme=" + (this->scheme_() == Scheme::LIGHT ? "light" : "dark");
 }
