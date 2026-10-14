@@ -28,6 +28,8 @@
    "reason": "Box shape: a wrapped message — the panel label is the full column width and both lines tall, the browser box is the text's lines."},
   {"screens": ["overview", "offline"], "text": "^(new|neu|als nächstes|next|today|heute|wednesday, october \\d+|mittwoch, \\d+\\. oktober|\\d+)$", "max": {"dx": 8, "dy": 9, "dw": 12, "dh": 6},
    "reason": "Small labels whose CSS line box and the panel's font line differ by a few px (badges, headings, the date)."},
+  {"screens": ["overview", "offline", "messages"], "text": "^(new|neu)$", "max": {"dx": 88, "dy": 10, "dw": 8, "dh": 6},
+   "reason": "Known gap: the Overview's messages card puts a message's NEW badge in the time column in the browser (~83 px left of the edge), at the row's right edge on the panel. Shows only while the seeded message still counts as new."},
   {"screens": ["offline"], "text": "^(can't reach social home|social home ist nicht erreichbar)", "max": {"dx": 4, "dw": 560, "dh": 4},
    "reason": "Box shape: the offline note's label spans the note on the panel, the browser box is the sentence (Δw)."},
 
