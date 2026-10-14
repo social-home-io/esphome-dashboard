@@ -5,7 +5,8 @@
 - `cpp/` — host C++ tests for the dashboard component: the JSON parser against
   every pinned Social Home fixture (the Connect from Home Assistant claim
   answers too), the layout / URL / emoji / request body helpers (text and
-  emoji runs), the map-picture fetch policy, the PNG decoders, which mDNS
+  emoji runs), how timeline bars, day-list rows and picture tiles are painted
+  (past and cancelled words keep 4.5:1 in light, dark and night), the map-picture fetch policy, the PNG decoders, which mDNS
   answers the address screen lists (and the URL a tap sets) and the sealed
   connect claim (X25519 / HKDF / AES-GCM and strict base64url) against
   Social Home's shared vectors (`sealed-claim-vectors.json`), the panel's

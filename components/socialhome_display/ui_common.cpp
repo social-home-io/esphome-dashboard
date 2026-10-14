@@ -391,11 +391,15 @@ lv_obj_t *SocialHomeDisplay::section_card_(lv_obj_t *parent, const std::string &
 
 lv_obj_t *SocialHomeDisplay::agenda_row_(lv_obj_t *parent, const AgendaRow &row, bool show_people) {
   const Palette &p = this->palette_();
+  // Past and cancelled rows recede without fading their words (row_style).
+  const RowStyle style = row_style(row, p);
   lv_obj_t *item = this->row_(parent, 0);
   lv_obj_set_width(item, LV_PCT(100));
   lv_obj_set_flex_align(item, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-  lv_obj_set_style_bg_color(item, lv_color_hex(row.now ? p.surface : p.bg), LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(item, LV_OPA_COVER, LV_PART_MAIN);
+  if (style.fill) {
+    lv_obj_set_style_bg_color(item, lv_color_hex(style.fill_color), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(item, LV_OPA_COVER, LV_PART_MAIN);
+  }
   lv_obj_set_style_radius(item, this->m_.px(8), LV_PART_MAIN);
   if (row.now) {
     lv_obj_set_style_outline_color(item, lv_color_hex(p.accent), LV_PART_MAIN);
@@ -404,18 +408,21 @@ lv_obj_t *SocialHomeDisplay::agenda_row_(lv_obj_t *parent, const AgendaRow &row,
   // The colour strip on the start side.
   lv_obj_set_style_border_side(item, LV_BORDER_SIDE_LEFT, LV_PART_MAIN);
   lv_obj_set_style_border_width(item, this->m_.px(6), LV_PART_MAIN);
-  lv_obj_set_style_border_color(item, lv_color_hex(row.color.or_else(p.border)), LV_PART_MAIN);
+  lv_obj_set_style_border_color(item, lv_color_hex(style.strip), LV_PART_MAIN);
   lv_obj_t *body = this->column_(item, this->m_.px(4));
   lv_obj_set_flex_grow(body, 1);
   lv_obj_set_style_pad_hor(body, this->m_.px(12), LV_PART_MAIN);
   lv_obj_set_style_pad_ver(body, this->m_.px(8), LV_PART_MAIN);
-  this->text_(body, row.time, FontRole::BODY, p.muted);
+  this->text_(body, row.time, FontRole::BODY, style.time_ink);
   lv_obj_t *line = this->row_(body, this->m_.px(8));
   lv_obj_set_width(line, LV_PCT(100));
-  if (!row.icon.empty())
-    this->emoji_(line, row.icon, this->m_.emoji_sm());
-  lv_obj_t *title = this->text_(line, row.title, FontRole::BODY, row.is_break ? p.muted : p.text);
-  if (row.status == Status::CANCELLED)
+  if (!row.icon.empty()) {
+    lv_obj_t *icon = this->emoji_(line, row.icon, this->m_.emoji_sm());
+    if (style.emoji_opa != OPA_FULL)
+      lv_obj_set_style_opa(icon, style.emoji_opa, LV_PART_MAIN);
+  }
+  lv_obj_t *title = this->text_(line, row.title, FontRole::BODY, style.title_ink);
+  if (style.strike)
     lv_obj_set_style_text_decor(title, LV_TEXT_DECOR_STRIKETHROUGH, LV_PART_MAIN);
   if (row.status != Status::NONE && !row.status_label.empty()) {
     uint32_t fg = row.status == Status::CANCELLED ? p.error_text : p.text;
@@ -424,11 +431,9 @@ lv_obj_t *SocialHomeDisplay::agenda_row_(lv_obj_t *parent, const AgendaRow &row,
     lv_obj_set_style_border_width(pill, 1, LV_PART_MAIN);
   }
   if (!row.meta.empty())
-    this->text_(body, row.meta, FontRole::SMALL, p.muted);
+    this->text_(body, row.meta, FontRole::SMALL, style.meta_ink);
   if (show_people && !row.people.empty())
     this->people_row_(body, row.people, this->m_.px(28));
-  if (row.past || row.status == Status::CANCELLED)
-    lv_obj_set_style_opa(item, LV_OPA_60, LV_PART_MAIN);
   return item;
 }
 

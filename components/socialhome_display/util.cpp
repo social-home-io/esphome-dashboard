@@ -469,6 +469,31 @@ BarStyle bar_style(uint32_t color, bool has_ink, uint32_t ink, uint32_t surface,
   return style;
 }
 
+RowStyle row_style(const AgendaRow &row, const Palette &p) {
+  const bool cancelled = row.status == Status::CANCELLED;
+  RowStyle style;
+  style.fill = !row.past;
+  style.fill_color = row.now ? p.surface : p.bg;
+  style.strip = row.color.valid && row.past ? bar_style(row.color.rgb, false, 0, p.surface, false, true).fill
+                                            : row.color.or_else(p.border);
+  style.time_ink = p.muted;
+  style.title_ink = row.past || cancelled || row.is_break ? p.muted : p.text;
+  style.meta_ink = p.muted;
+  style.emoji_opa = row.past ? OPA_PAST_ROW_EMOJI : OPA_FULL;
+  style.strike = cancelled;
+  return style;
+}
+
+TileStyle tile_style(const Tile &tile, const Palette &p) {
+  TileStyle style;
+  style.caption_ink = p.muted;
+  style.strip = tile.color.or_else(p.border);
+  // As in the browser's CSS, the cancelled look wins over the past one.
+  style.emoji_opa = tile.cancelled ? OPA_CANCELLED_PICTURE : tile.past ? OPA_PAST_PICTURE : OPA_FULL;
+  style.strike = tile.cancelled;
+  return style;
+}
+
 void hand_end(float deg, int cx, int cy, int len, int *x, int *y) {
   float rad = deg * static_cast<float>(M_PI) / 180.0f;
   *x = cx + static_cast<int>(std::lround(std::sin(rad) * len));
