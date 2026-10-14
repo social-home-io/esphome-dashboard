@@ -436,6 +436,7 @@ class Run:
         blur = "document.activeElement && document.activeElement.blur();"
         try:
             self.panel.run(*go_home)
+            self.quiet_minute(30)
             submit = "document.querySelector('form[action=\"/lock\"]').submit();"
             if "lock" in screens:
                 self.pair_shot(name("lock"), url=None, panel_steps=[self.panel.tap(lock), "wait 16"],
@@ -459,6 +460,10 @@ class Run:
             keys = "".join(f"document.querySelector('[data-key=\"{d}\"]').click();" for d in WRONG_PIN)
             wrong_js = keys + "document.querySelector('[data-key=\"ok\"]').click();" + blur
             for attempt in range(1, 5):
+                if attempt in (1, 4):
+                    # The browser's lock page is drawn by this PIN's answer
+                    # and its clock ticks on its own: keep both in one minute.
+                    self.quiet_minute(30)
                 self.browser.js(wrong_js, wait=2.5)
                 left = self.panel_wrong_pin(expect=5 - attempt)
                 if left != 5 - attempt:
