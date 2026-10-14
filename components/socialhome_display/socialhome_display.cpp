@@ -55,6 +55,10 @@ const std::string &SocialHomeDisplay::str_(const char *key) const {
       {"wifi_waiting", "Waiting for Wi-Fi\xE2\x80\xA6"},
       {"server_title", "Find Social Home"},
       {"server_text", "Type the address of your Social Home. The dashboard port 8100 is added for you."},
+      {"server_text_found", "Tap your Social Home, or type its address. The dashboard port 8100 is added for you."},
+      {"found_title", "Found on this network"},
+      {"found_looking", "Looking for Social Home on this network\xE2\x80\xA6"},
+      {"found_none", "None found yet. Using the Home Assistant App? Type its address below."},
       {"server_placeholder", "192.168.1.20 or socialhome.local"},
       {"server_invalid", "That doesn't look like an address. Try 192.168.1.20 or socialhome.local."},
       {"server_ha", "Or adopt this panel in Home Assistant and press Connect in Social Home."},
@@ -154,10 +158,11 @@ void SocialHomeDisplay::dump_config() {
                 "  MAC: %s\n"
                 "  Server: %s\n"
                 "  Paired: %s\n"
+                "  Finds Social Home (mDNS): %s\n"
                 "  Poll interval: %" PRIu32 " ms",
                 FIRMWARE_VERSION, this->model_.c_str(), this->screen_width_, this->screen_height_, this->m_.scale,
                 this->mac_.c_str(), this->server_.empty() ? "(not set)" : this->server_.c_str(),
-                YESNO(!this->token_.empty()), this->poll_interval_ms_);
+                YESNO(!this->token_.empty()), YESNO(this->browser_.supported()), this->poll_interval_ms_);
 }
 
 namespace {
@@ -277,6 +282,19 @@ void SocialHomeDisplay::loop() {
     } else {
       this->set_mode_(Mode::RUNNING);
     }
+  }
+
+  // The address screen lists the Social Homes the network announces.
+  this->browser_.set_active(this->mode_ == Mode::NO_SERVER && this->network_up_());
+  if (this->browser_.poll(this->found_, this->found_searched_) && this->mode_ == Mode::NO_SERVER && !this->dirty_ &&
+      this->server_input_ != nullptr) {
+    this->fill_found_();
+    // Nothing typed yet: the keyboard makes way for the rows (and comes
+    // back when they go). Mid-typing it stays as it is.
+    const std::string text = lv_textarea_get_text(this->server_input_);
+    const bool typing = !text.empty() && text != this->server_;
+    const bool keyboard_up = !lv_obj_has_flag(this->server_keyboard_, LV_OBJ_FLAG_HIDDEN);
+    this->show_keyboard_(typing ? keyboard_up : this->found_.empty() || !this->error_.empty());
   }
 
   HttpResponse response;
@@ -1001,7 +1019,12 @@ void SocialHomeDisplay::render_() {
   this->clock_labels_.clear();
   this->last_minute_.clear();
   this->main_scroll_ = nullptr;
+  if (this->server_input_ != nullptr && this->mode_ == Mode::NO_SERVER)
+    this->typed_ = lv_textarea_get_text(this->server_input_);
   this->server_input_ = nullptr;
+  this->server_card_ = nullptr;
+  this->server_keyboard_ = nullptr;
+  this->found_list_ = nullptr;
   this->pin_dots_ = nullptr;
   this->pin_note_ = nullptr;
   lv_obj_clean(screen);

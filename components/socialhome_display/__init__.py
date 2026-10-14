@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MPL-2.0
 """Social Home wall dashboard for ESPHome LVGL panels.
 
-Pairs with a Social Home household (a code typed in Admin › Dashboard, or
+Finds Social Home on the network (mDNS, ``_socialhome-dash._tcp``; needs
+``mdns:``), pairs with a household (a code typed in Admin › Dashboard, or
 Connect from Home Assistant through the connect_social_home action), polls
 the display API (``/api/display/v1/``) and draws the household dashboard with
 LVGL: Overview, Messages, Notes, Map, each person's page and the picture
@@ -39,6 +40,7 @@ CONF_FONTS = "fonts"
 CONF_BACKLIGHT_ID = "backlight_id"
 CONF_SCREEN_OFF_TIMEOUT = "screen_off_timeout"
 CONF_NIGHT_BRIGHTNESS = "night_brightness"
+CONF_DISCOVERY_STUB = "discovery_stub"
 
 # Font roles, in FontRole order (socialhome_display.h).
 FONT_ROLES = (
@@ -68,6 +70,14 @@ def _model(value):
     if len(value) > 64 or not re.fullmatch(r"[A-Za-z0-9._ -]*", value):
         raise cv.Invalid("model: up to 64 letters, digits, '.', '_', '-' or spaces")
     return value
+
+
+def _host_only(value):
+    # A fixed "found on this network" list for the SDL screenshots: the host
+    # build has no mDNS. Never on a panel, which browses the real network.
+    if not CORE.is_host:
+        raise cv.Invalid(f"{CONF_DISCOVERY_STUB} is for the host build only")
+    return cv.string_strict(value)
 
 
 def _lv_uses(config):
@@ -111,6 +121,8 @@ CONFIG_SCHEMA = cv.All(
                 CONF_SCREEN_OFF_TIMEOUT, default="10min"
             ): cv.positive_time_period_minutes,
             cv.Optional(CONF_NIGHT_BRIGHTNESS, default=0.15): cv.percentage,
+            # "name|host|ipv4|port|k=v,k=v;…" (discovery.h)
+            cv.Optional(CONF_DISCOVERY_STUB): _host_only,
         }
     ).extend(cv.COMPONENT_SCHEMA),
     _lv_uses,
@@ -140,6 +152,8 @@ async def to_code(config):
                 await cg.get_variable(font_id),
             )
         )
+    if config.get(CONF_DISCOVERY_STUB):
+        cg.add(var.set_discovery_stub(config[CONF_DISCOVERY_STUB]))
     if CONF_BACKLIGHT_ID in config:
         cg.add(var.set_backlight(await cg.get_variable(config[CONF_BACKLIGHT_ID])))
     if CONF_TIME_ID in config:

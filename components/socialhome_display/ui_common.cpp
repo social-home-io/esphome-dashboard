@@ -658,15 +658,19 @@ void SocialHomeDisplay::build_tabs_(lv_obj_t *parent) {
     lv_obj_set_style_border_color(t, lv_color_hex(p.accent), LV_PART_MAIN);
     lv_obj_set_style_border_opa(t, tab.current ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
     this->text_(t, tab.label, FontRole::BODY_BOLD, tab.current ? p.text : p.muted);
-    if (tab.badge > 0) {
-      lv_obj_t *badge = this->box_(t);
-      int d = this->m_.px(24);
-      lv_obj_set_size(badge, d, d);
+    // The browser's .dash-tab-badge: the count of new messages (< 15 min,
+    // never "unread") as an accent pill that grows with the number — not on
+    // the tab being shown.
+    if (tab.badge > 0 && !tab.current) {
+      lv_obj_t *badge = this->row_(t, 0);
+      lv_obj_set_flex_align(badge, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+      lv_obj_set_height(badge, this->m_.px(24));
+      lv_obj_set_style_min_width(badge, this->m_.px(24), LV_PART_MAIN);
+      lv_obj_set_style_pad_hor(badge, this->m_.px(6), LV_PART_MAIN);
       lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, LV_PART_MAIN);
       lv_obj_set_style_bg_color(badge, lv_color_hex(p.accent), LV_PART_MAIN);
       lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, LV_PART_MAIN);
-      lv_obj_t *n = this->text_(badge, std::to_string(tab.badge), FontRole::LABEL, p.accent_text);
-      lv_obj_center(n);
+      this->text_(badge, std::to_string(tab.badge), FontRole::LABEL, p.accent_text);
     }
     lv_obj_add_flag(t, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_user_data(t, this);

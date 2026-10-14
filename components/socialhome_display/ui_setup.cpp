@@ -4,6 +4,7 @@
 // "update the panel", the night screen, the privacy lock with its PIN pad,
 // and the long-press settings overlay.
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 
 #include "esphome/core/hal.h"
@@ -48,6 +49,17 @@ void SocialHomeDisplay::build_wifi_(lv_obj_t *screen) {
   this->text_(line, this->str_("wifi_waiting"), FontRole::BODY_BOLD, p.text);
 }
 
+void SocialHomeDisplay::use_server_(const std::string &url) {
+  ESP_LOGI(TAG, "Server %s", url.c_str());
+  this->server_ = url;
+  this->token_.clear();
+  this->display_id_.clear();
+  this->typed_.clear();
+  this->save_state_();
+  this->pair_note_.clear();
+  this->set_mode_(Mode::PAIRING);
+}
+
 void SocialHomeDisplay::on_server_ready_(lv_event_t *event) {
   auto *self = static_cast<SocialHomeDisplay *>(lv_event_get_user_data(event));
   lv_event_code_t code = lv_event_get_code(event);
@@ -57,32 +69,118 @@ void SocialHomeDisplay::on_server_ready_(lv_event_t *event) {
     return;
   std::string url = normalize_server_url(lv_textarea_get_text(self->server_input_));
   if (url.empty()) {
+    self->typed_ = lv_textarea_get_text(self->server_input_);
     self->error_ = self->str_("server_invalid");
     self->dirty_ = true;
     return;
   }
-  ESP_LOGI(TAG, "Server %s", url.c_str());
-  self->server_ = url;
-  self->token_.clear();
-  self->display_id_.clear();
-  self->save_state_();
-  self->pair_note_.clear();
-  self->set_mode_(Mode::PAIRING);
+  self->use_server_(url);
+}
+
+void SocialHomeDisplay::on_found_(lv_event_t *event) {
+  lv_obj_t *target = static_cast<lv_obj_t *>(lv_event_get_current_target(event));
+  auto *self = static_cast<SocialHomeDisplay *>(lv_obj_get_user_data(target));
+  auto index = reinterpret_cast<uintptr_t>(lv_event_get_user_data(event));
+  if (self == nullptr || index >= self->found_.size())
+    return;
+  // Copy: pairing rebuilds the screen (and the rows).
+  std::string url = self->found_[index].url;
+  self->use_server_(url);
+}
+
+void SocialHomeDisplay::on_server_tap_(lv_event_t *event) {
+  auto *self = static_cast<SocialHomeDisplay *>(lv_event_get_user_data(event));
+  self->show_keyboard_(true);
+}
+
+void SocialHomeDisplay::on_keyboard_cancel_(lv_event_t *event) {
+  auto *self = static_cast<SocialHomeDisplay *>(lv_event_get_user_data(event));
+  self->show_keyboard_(false);
+}
+
+void SocialHomeDisplay::show_keyboard_(bool show) {
+  if (this->server_keyboard_ == nullptr || this->server_card_ == nullptr || this->server_input_ == nullptr)
+    return;
+  const int margin = this->m_.px(24);
+  if (show) {
+    lv_obj_remove_flag(this->server_keyboard_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_state(this->server_input_, LV_STATE_FOCUSED);
+  } else {
+    lv_obj_add_flag(this->server_keyboard_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_state(this->server_input_, LV_STATE_FOCUSED);
+  }
+  // The card keeps clear of the keyboard and scrolls when it can't.
+  int room = this->screen_height_ - 2 * margin - (show ? lv_obj_get_height(this->server_keyboard_) : 0);
+  lv_obj_set_style_max_height(this->server_card_, room, LV_PART_MAIN);
+  lv_obj_update_layout(this->server_card_);
+  // Typing: the field and Connect (the card's last row) stay in sight.
+  if (show)
+    lv_obj_scroll_to_view(lv_obj_get_child(this->server_card_, -1), LV_ANIM_OFF);
+}
+
+void SocialHomeDisplay::fill_found_() {
+  if (this->found_list_ == nullptr)
+    return;
+  const Palette &p = this->palette_();
+  lv_obj_clean(this->found_list_);
+  if (this->found_.empty()) {
+    this->wrap_(this->found_list_, this->str_(this->found_searched_ ? "found_none" : "found_looking"),
+                FontRole::BODY, p.muted);
+    return;
+  }
+  // Four rows fit above the address field; more households on one network
+  // than that is rare, and the field is still there.
+  const size_t shown = std::min<size_t>(this->found_.size(), 4);
+  for (size_t k = 0; k < shown; k++) {
+    const FoundServer &found = this->found_[k];
+    lv_obj_t *row = this->row_(this->found_list_, this->m_.px(16));
+    lv_obj_set_width(row, LV_PCT(100));
+    lv_obj_set_style_min_height(row, this->m_.px(64), LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(row, this->m_.px(20), LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(row, this->m_.px(10), LV_PART_MAIN);
+    lv_obj_set_style_radius(row, this->m_.px(14), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(row, lv_color_hex(p.bg), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(row, lv_color_hex(p.border), LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(row, lv_color_hex(p.border), LV_PART_MAIN);
+    lv_obj_set_style_border_width(row, std::max(1, this->m_.px(2)), LV_PART_MAIN);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_user_data(row, this);
+    lv_obj_add_event_cb(row, SocialHomeDisplay::on_found_, LV_EVENT_CLICKED, reinterpret_cast<void *>(k));
+    lv_obj_t *texts = this->column_(row, this->m_.px(2));
+    lv_obj_set_flex_grow(texts, 1);
+    lv_obj_t *name = this->text_(texts, found.name, FontRole::BODY_BOLD, p.text);
+    lv_label_set_long_mode(name, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_width(name, LV_PCT(100));
+    this->text_(texts, found.address, FontRole::SMALL, p.muted);
+    this->text_(row, "\xE2\x80\xBA", FontRole::TITLE, p.accent);  // ›
+  }
 }
 
 void SocialHomeDisplay::build_server_(lv_obj_t *screen) {
   const Palette &p = this->palette_();
-  lv_obj_t *card = this->setup_card_(screen, this->str_("server_title"), this->str_("server_text"));
+  const bool browse = this->browser_.supported();
+  lv_obj_t *card = this->setup_card_(screen, this->str_("server_title"),
+                                     this->str_(browse ? "server_text_found" : "server_text"));
   lv_obj_align(card, LV_ALIGN_TOP_MID, 0, this->m_.px(24));
-  // Later: an mDNS browse for _socialhome-dash._tcp (TXT api=1, id, path)
-  // lists the households found here, with this field as the fallback. The
-  // Home Assistant App (bridge network) doesn't advertise; typed it stays.
+  lv_obj_add_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(card, LV_DIR_VER);
+  this->server_card_ = card;
+  if (browse) {
+    // Social Home announces itself over mDNS (_socialhome-dash._tcp); the
+    // Home Assistant App (bridge network) can't, so the field stays.
+    this->caps_(card, this->str_("found_title"), p.muted);
+    this->found_list_ = this->column_(card, this->m_.px(10));
+    lv_obj_set_width(this->found_list_, LV_PCT(100));
+    this->fill_found_();
+  }
   lv_obj_t *input = lv_textarea_create(card);
   lv_obj_set_width(input, LV_PCT(100));
   lv_textarea_set_one_line(input, true);
   lv_textarea_set_placeholder_text(input, this->str_("server_placeholder").c_str());
-  if (!this->server_.empty())
-    lv_textarea_set_text(input, this->server_.c_str());
+  const std::string &text = this->typed_.empty() ? this->server_ : this->typed_;
+  if (!text.empty())
+    lv_textarea_set_text(input, text.c_str());
   lv_obj_set_style_text_font(input, this->font_(FontRole::LARGE), LV_PART_MAIN);
   lv_obj_set_style_text_color(input, lv_color_hex(p.text), LV_PART_MAIN);
   lv_obj_set_style_bg_color(input, lv_color_hex(p.bg), LV_PART_MAIN);
@@ -90,8 +188,8 @@ void SocialHomeDisplay::build_server_(lv_obj_t *screen) {
   lv_obj_set_style_border_width(input, this->m_.px(2), LV_PART_MAIN);
   lv_obj_set_style_radius(input, this->m_.px(10), LV_PART_MAIN);
   lv_obj_set_style_pad_all(input, this->m_.px(14), LV_PART_MAIN);
-  lv_obj_add_state(input, LV_STATE_FOCUSED);
   lv_obj_add_event_cb(input, SocialHomeDisplay::on_server_ready_, LV_EVENT_READY, this);
+  lv_obj_add_event_cb(input, SocialHomeDisplay::on_server_tap_, LV_EVENT_CLICKED, this);
   this->server_input_ = input;
   if (!this->error_.empty())
     this->wrap_(card, this->error_, FontRole::BODY, p.error_text);
@@ -113,6 +211,13 @@ void SocialHomeDisplay::build_server_(lv_obj_t *screen) {
   this->keyboard_font_.fallback = &lv_font_montserrat_24;
   lv_obj_set_style_text_font(keyboard, &this->keyboard_font_, LV_PART_ITEMS);
   lv_obj_set_style_bg_color(keyboard, lv_color_hex(p.border), LV_PART_MAIN);
+  lv_obj_add_event_cb(keyboard, SocialHomeDisplay::on_keyboard_cancel_, LV_EVENT_CANCEL, this);
+  this->server_keyboard_ = keyboard;
+  lv_obj_update_layout(screen);
+  // With Social Homes to tap, the keyboard waits for a tap on the field
+  // (and makes room for the list); otherwise typing is the only way on.
+  // After a wrong address it stays up for the correction.
+  this->show_keyboard_(this->found_.empty() || !this->error_.empty());
 }
 
 void SocialHomeDisplay::on_change_server_(lv_event_t *event) {

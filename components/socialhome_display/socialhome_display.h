@@ -23,6 +23,7 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 #endif
 
+#include "browser.h"
 #include "images.h"
 #include "map_picture.h"
 #include "model.h"
@@ -58,6 +59,8 @@ class SocialHomeDisplay : public Component {
  public:
   void set_lvgl(lvgl::LvglComponent *lvgl) { this->lvgl_ = lvgl; }
   void set_server_url(const std::string &url) { this->default_server_ = url; }
+  /// Host build only: a fixed list in place of the mDNS browse.
+  void set_discovery_stub(const std::string &spec) { this->browser_.set_stub(spec); }
   void set_poll_interval(uint32_t interval_ms) { this->poll_interval_ms_ = interval_ms; }
   void set_screen_size(int width, int height) {
     this->screen_width_ = width;
@@ -194,6 +197,13 @@ class SocialHomeDisplay : public Component {
   void build_update_(lv_obj_t *screen);
   void build_claim_(lv_obj_t *screen);
   lv_obj_t *setup_card_(lv_obj_t *screen, const std::string &title, const std::string &text);
+  /// The address screen's "Found on this network" rows, (re)filled in place
+  /// so a browse never wipes what is being typed.
+  void fill_found_();
+  /// Show / hide the address screen's keyboard (the card shrinks to fit).
+  void show_keyboard_(bool show);
+  /// Use `url` as the server and go on to pairing.
+  void use_server_(const std::string &url);
   void open_settings_();
   void close_settings_();
 
@@ -205,6 +215,9 @@ class SocialHomeDisplay : public Component {
   static void on_night_tap_(lv_event_t *event);
   static void on_server_ready_(lv_event_t *event);
   static void on_change_server_(lv_event_t *event);
+  static void on_found_(lv_event_t *event);
+  static void on_server_tap_(lv_event_t *event);
+  static void on_keyboard_cancel_(lv_event_t *event);
   static void on_retry_(lv_event_t *event);
   static void on_claim_done_(lv_event_t *event);
   static void on_pin_key_(lv_event_t *event);
@@ -307,6 +320,13 @@ class SocialHomeDisplay : public Component {
   lv_obj_t *confirm_{nullptr};
   lv_obj_t *wake_layer_{nullptr};
   lv_obj_t *server_input_{nullptr};
+  lv_obj_t *server_card_{nullptr};
+  lv_obj_t *server_keyboard_{nullptr};
+  lv_obj_t *found_list_{nullptr};
+  std::string typed_;  ///< the address field's text across a rebuild
+  ServerBrowser browser_;
+  std::vector<FoundServer> found_;
+  bool found_searched_{false};
   lv_font_t keyboard_font_{};
   std::string pin_;
   lv_obj_t *pin_dots_{nullptr};

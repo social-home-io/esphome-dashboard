@@ -4,13 +4,13 @@ Firmware that turns an ESPHome touch panel into a [Social Home](https://github.c
 wall dashboard: the same household view as the browser dashboard, on a panel
 on the wall.
 
-> **Status: beta.** The panel pairs with a Social Home household and shows the
-> household dashboard: Overview, Messages, Notes, Map ("Who's where"), each
-> person's page and the picture view for children, the night screen and the
-> privacy lock. It joins Wi-Fi through Improv, works as a Home Assistant
-> Bluetooth proxy and updates itself over the air. Not yet: the map picture,
-> unlocking with the PIN on the panel and "Got it" reaching the server (each
-> needs a Social Home update), and finding Social Home on the network.
+> **Status: beta.** The panel finds Social Home on the home network, pairs
+> with the household and shows the household dashboard: Overview, Messages
+> (with a count of new ones on the tab), Notes, Map ("Who's where") with the
+> map picture, each person's page and the picture view for children, the
+> night screen and the privacy lock with its PIN pad, and "Got it" on
+> mentions. It joins Wi-Fi through Improv, works as a Home Assistant
+> Bluetooth proxy and updates itself over the air.
 
 ![The panel's Overview](docs/screenshots/panel-overview.png)
 
@@ -39,8 +39,13 @@ Other ways to set Wi-Fi:
 
 ### Connect to Social Home
 
-1. Once on Wi-Fi the panel asks for your Social Home's address. Type its IP
-   or host name; the dashboard port 8100 is added for you.
+1. Once on Wi-Fi the panel looks for Social Home on your network and lists
+   what it finds under **Found on this network**: tap yours. Not listed (the
+   Home Assistant App doesn't announce itself, and some networks block
+   mDNS)? Type its IP or host name; the dashboard port 8100 is added for
+   you.
+
+   ![The address screen with a Social Home found](docs/screenshots/panel-setup-found.png)
 2. The panel shows a six-character code. In Social Home open
    **Admin › Dashboard › Wall panels › Add** and enter it.
 3. The panel shows the dashboard. It polls every 30 seconds (and only
@@ -138,7 +143,9 @@ cmake -S tests/cpp -B build/tests && cmake --build build/tests && ctest --test-d
 Screenshots without hardware (needs `libsdl2-dev` and `libssl-dev`): build
 `builds/host-sdl.yaml`, run the binary, and drive it through its command file
 (see `builds/host/host_driver.h`). It writes BMPs to
-`builds/.esphome/snapshots/socialhome-host/`.
+`builds/.esphome/snapshots/socialhome-host/`. The host build has no mDNS: to
+see the **Found on this network** list, pass a fixed one, e.g.
+`-s discovery_stub "Social Home 1a2b3c|socialhome-1a2b3c|127.0.0.1|8100|api=1,id=1a2b3c"`.
 
 CI compiles every device on each pull request and uploads the factory and OTA
 images as build artifacts, so a PR build can be flashed for testing. See
