@@ -47,12 +47,26 @@ font:
     file: "gfonts://Roboto"
     size: ${font_size_clock}
     glyphs: "0123456789:. APM"
+  # The night clock (.dash-night-clock: clamp(5rem, min(22vw, 30vh), 12rem),
+  # weight 200 — 192 px at 1280x800).
   - id: font_night
-    file: {type: gfonts, family: Roboto, weight: 300}
+    file: {type: gfonts, family: Roboto, weight: 200}
     size: ${font_size_night}
     glyphs: "0123456789:. APM"
-  # The lock screen (lock.html.j2 + dashboard.css): its clock with the PIN
-  # pad open, and its 18 px page text (PIN button, alert, hint).
+  # The night date and "Tomorrow …" line (.dash-night-date / -next, 32 px at
+  # 1280x800) and the lock screen's date (.dash-lock-date, 32 px).
+  - id: font_text_large
+    file: "gfonts://Roboto"
+    size: ${font_size_text_large}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  # The lock screen (lock.html.j2 + dashboard.css): its clock (.dash-lock-time,
+  # 160 px light), its clock with the PIN pad open, and its 18 px page text
+  # (PIN button, alert, hint).
+  - id: font_lock_time
+    file: {type: gfonts, family: Roboto, weight: 300}
+    size: ${font_size_lock_time}
+    glyphs: "0123456789:. APM"
   - id: font_lock
     file: {type: gfonts, family: Roboto, weight: 300}
     size: ${font_size_lock}

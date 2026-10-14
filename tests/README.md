@@ -5,7 +5,7 @@
 - `cpp/` — host C++ tests for the dashboard component: the JSON parser against
   every pinned Social Home fixture (the Connect from Home Assistant claim
   answers too), the layout / URL / emoji / request body helpers (text and
-  emoji runs), how timeline bars, day-list rows and picture tiles are painted
+  emoji runs), how timeline bars (the school stripes too, and the lanes' heights), day-list rows and picture tiles are painted
   (past and cancelled words keep 4.5:1 in light, dark and night), how live data greys while offline (the words keep 4.5:1, the grey "now" mark its label; pictures greyed as CSS `grayscale()`, a grey copy of the decoded pixels), the scheme's note cards and clock dial, a stale map spot's "last seen" line, the map-picture fetch policy, the PNG decoders, which mDNS
   answers the address screen lists (and the URL a tap sets) and the sealed
   connect claim (X25519 / HKDF / AES-GCM and strict base64url) against

@@ -25,6 +25,10 @@ const lv_font_t *SocialHomeDisplay::font_(FontRole role) const {
     switch (role) {
       case FontRole::LOCK:
         return this->font_(FontRole::DISPLAY);
+      case FontRole::LOCK_TIME:
+        return this->font_(FontRole::NIGHT);
+      case FontRole::TEXT_LARGE:
+        return this->font_(FontRole::LARGE);
       case FontRole::TEXT:
         return this->font_(FontRole::SMALL);
       case FontRole::TEXT_BOLD:
@@ -156,6 +160,12 @@ lv_obj_t *SocialHomeDisplay::text_(lv_obj_t *parent, const std::string &text, Fo
   return label;
 }
 
+int SocialHomeDisplay::text_width_(const std::string &text, FontRole font) const {
+  lv_point_t extent;
+  lv_text_get_size(&extent, strip_emoji(text).c_str(), this->font_(font), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+  return extent.x;
+}
+
 lv_obj_t *SocialHomeDisplay::wrap_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color) {
   lv_obj_t *label = this->text_(parent, text, font, color);
   lv_obj_set_width(label, LV_PCT(100));
@@ -260,8 +270,9 @@ lv_obj_t *SocialHomeDisplay::inline_(lv_obj_t *parent, const std::string &text, 
     lv_obj_set_style_text_font(label, f, LV_PART_MAIN);
     lv_obj_set_style_text_color(label, lv_color_hex(color), LV_PART_MAIN);
     if (used + extent.x > max_width) {
-      // The rest is cut with "…".
-      lv_obj_set_width(label, std::max(0, max_width - used));
+      // The rest is cut with "…" — on this line: a dotted label only
+      // stops wrapping when its height is fixed too.
+      lv_obj_set_size(label, std::max(0, max_width - used), lv_font_get_line_height(f));
       lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
       break;
     }
@@ -463,12 +474,37 @@ lv_obj_t *SocialHomeDisplay::agenda_row_(lv_obj_t *parent, const AgendaRow &row,
   lv_obj_set_style_border_side(item, LV_BORDER_SIDE_LEFT, LV_PART_MAIN);
   lv_obj_set_style_border_width(item, this->m_.px(6), LV_PART_MAIN);
   lv_obj_set_style_border_color(item, lv_color_hex(style.strip), LV_PART_MAIN);
+  // .dash-row: time and the rest side by side when they fit (8 / 16 px
+  // gaps), the rest under the time when they don't — as the browser wraps.
+  lv_obj_set_flex_flow(item, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_set_style_pad_hor(item, this->m_.px(12), LV_PART_MAIN);
+  lv_obj_set_style_pad_ver(item, this->m_.px(8), LV_PART_MAIN);
+  lv_obj_set_style_pad_column(item, this->m_.px(16), LV_PART_MAIN);
+  lv_obj_set_style_pad_row(item, this->m_.px(8), LV_PART_MAIN);
+  lv_obj_t *time = this->text_(item, row.time, FontRole::BODY, style.time_ink);
+  lv_obj_set_style_max_width(time, LV_PCT(100), LV_PART_MAIN);
+  lv_label_set_long_mode(time, LV_LABEL_LONG_MODE_WRAP);
+  // .dash-row-main: as wide as its words (never under 9rem, never over the
+  // row), then grown into the line — so it moves under the time exactly
+  // when time + words don't fit side by side. LVGL wraps a flex line by a
+  // growing item's min width, so the words are measured here (with a pixel
+  // to spare, so a title that fits is never wrapped by rounding).
+  const int gap = this->m_.px(8);
+  int natural = this->text_width_(row.title, FontRole::BODY);
+  if (!row.icon.empty())
+    natural += this->m_.emoji_sm() + gap;
+  const bool tagged = row.status != Status::NONE && !row.status_label.empty();
+  if (tagged)
+    natural += gap + this->text_width_(upper(row.status_label), FontRole::LABEL) + 2 * this->m_.px(8) + 2;
+  if (!row.meta.empty())
+    natural = std::max(natural, this->text_width_(row.meta, FontRole::SMALL));
+  lv_obj_update_layout(item);
+  const int room = std::max(1, static_cast<int>(lv_obj_get_content_width(item)));
   lv_obj_t *body = this->column_(item, this->m_.px(4));
+  lv_obj_set_style_min_width(body, std::min(std::max(natural + 2, this->m_.px(144)), room), LV_PART_MAIN);
   lv_obj_set_flex_grow(body, 1);
-  lv_obj_set_style_pad_hor(body, this->m_.px(12), LV_PART_MAIN);
-  lv_obj_set_style_pad_ver(body, this->m_.px(8), LV_PART_MAIN);
-  this->text_(body, row.time, FontRole::BODY, style.time_ink);
-  lv_obj_t *line = this->row_(body, this->m_.px(8));
+  lv_obj_t *line = this->row_(body, gap);
+  lv_obj_set_flex_flow(line, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_set_width(line, LV_PCT(100));
   if (!row.icon.empty()) {
     lv_obj_t *icon = this->emoji_(line, row.icon, this->m_.emoji_sm());
@@ -476,9 +512,11 @@ lv_obj_t *SocialHomeDisplay::agenda_row_(lv_obj_t *parent, const AgendaRow &row,
       lv_obj_set_style_opa(icon, style.emoji_opa, LV_PART_MAIN);
   }
   lv_obj_t *title = this->text_(line, row.title, FontRole::BODY, style.title_ink);
+  lv_obj_set_style_max_width(title, LV_PCT(100), LV_PART_MAIN);
+  lv_label_set_long_mode(title, LV_LABEL_LONG_MODE_WRAP);
   if (style.strike)
     lv_obj_set_style_text_decor(title, LV_TEXT_DECOR_STRIKETHROUGH, LV_PART_MAIN);
-  if (row.status != Status::NONE && !row.status_label.empty()) {
+  if (tagged) {
     uint32_t fg = row.status == Status::CANCELLED ? p.error_text : p.text;
     lv_obj_t *pill = this->pill_(line, upper(row.status_label), p.surface, fg, FontRole::LABEL);
     lv_obj_set_style_border_color(pill, lv_color_hex(fg), LV_PART_MAIN);
@@ -509,15 +547,25 @@ lv_obj_t *SocialHomeDisplay::chore_row_(lv_obj_t *parent, const Chore &chore, bo
       lv_obj_set_style_radius(box, this->m_.px(3), LV_PART_MAIN);
     }
   }
-  lv_obj_t *body = this->column_(item, this->m_.px(2));
+  // .dash-chore-text: "Empty dishwasher · today" runs on in one line (the
+  // due day after the title when it fits, under it when it doesn't).
+  lv_obj_t *body = this->row_(item, 0);
+  lv_obj_set_flex_flow(body, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_set_flex_grow(body, 1);
-  lv_obj_t *title = this->wrap_(body, chore.title, FontRole::BODY, chore.state == ChoreState::DONE ? p.muted : p.text);
+  lv_obj_set_width(body, 0);
+  lv_obj_t *title = this->text_(body, chore.title, FontRole::BODY, chore.state == ChoreState::DONE ? p.muted : p.text);
+  lv_obj_set_style_max_width(title, LV_PCT(100), LV_PART_MAIN);
+  lv_label_set_long_mode(title, LV_LABEL_LONG_MODE_WRAP);
   if (chore.state == ChoreState::DONE)
     lv_obj_set_style_text_decor(title, LV_TEXT_DECOR_STRIKETHROUGH, LV_PART_MAIN);
-  if (!chore.late.empty())
-    this->text_(body, chore.late, FontRole::SMALL, p.error_text);
-  else if (!chore.due.empty())
-    this->text_(body, chore.due, FontRole::SMALL, p.muted);
+  const std::string &after = !chore.late.empty() ? chore.late : chore.due;
+  if (!after.empty()) {
+    const uint32_t ink = !chore.late.empty() ? p.error_text : p.muted;
+    lv_obj_t *tail = this->text_(body, "\xC2\xB7 " + after, FontRole::BODY, ink);
+    lv_obj_set_style_margin_left(tail, lv_font_get_glyph_width(this->font_(FontRole::BODY), ' ', 0), LV_PART_MAIN);
+    lv_obj_set_style_max_width(tail, LV_PCT(100), LV_PART_MAIN);
+    lv_label_set_long_mode(tail, LV_LABEL_LONG_MODE_WRAP);
+  }
   if (show_people && !chore.people.empty())
     this->people_row_(item, chore.people, this->m_.px(32));
   return item;

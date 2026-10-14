@@ -324,30 +324,40 @@ void SocialHomeDisplay::build_night_(lv_obj_t *screen) {
   lv_obj_set_width(body, LV_PCT(100));
   lv_obj_set_flex_grow(body, 1);
   lv_obj_add_flag(body, LV_OBJ_FLAG_EVENT_BUBBLE);
-  lv_obj_t *col = this->column_(body, this->m_.px(12));
+  // .dash-night-view: the clock (192 px at 1280×800), the date 8 px under
+  // it and 32 px over the "Tomorrow" line (both 32 px), the hint 40 px on.
+  lv_obj_t *col = this->column_(body, 0);
   lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_center(col);
   // The clock (long-press for settings) passes a tap up to the root.
   lv_obj_add_flag(col, LV_OBJ_FLAG_EVENT_BUBBLE);
-  this->clock_label_(col, FontRole::NIGHT, p.text);
-  this->text_(col, h.night.has_value() ? h.night->date : h.clock.date, FontRole::LARGE, p.muted);
+  lv_obj_t *clock = this->clock_label_(col, FontRole::NIGHT, p.text);
+  // Roboto's line box is taller than the browser's `line-height: 1`.
+  const int trim = this->m_.px(16);
+  lv_obj_set_style_margin_top(clock, -trim, LV_PART_MAIN);
+  lv_obj_set_style_margin_bottom(clock, -trim, LV_PART_MAIN);
+  lv_obj_t *date =
+      this->text_(col, h.night.has_value() ? h.night->date : h.clock.date, FontRole::TEXT_LARGE, p.muted);
+  lv_obj_set_style_pad_top(date, this->m_.px(8), LV_PART_MAIN);
+  lv_obj_set_style_pad_bottom(date, this->m_.px(32), LV_PART_MAIN);
   if (h.night.has_value() && h.night->item.has_value()) {
-    // "Tomorrow 08:00 🎒 School 👦" on one line, as on the tablet.
+    // "Tomorrow 08:00 🎒 School 👦" on one line, as on the tablet (0.5ch
+    // apart).
     const NightItem &item = *h.night->item;
-    lv_obj_t *line = this->row_(col, this->m_.px(10));
-    lv_obj_set_style_pad_top(line, this->m_.px(6), LV_PART_MAIN);
-    this->text_(line, item.when_label, FontRole::BODY_BOLD, p.text);
-    this->text_(line, item.time, FontRole::BODY, p.text);
+    const int gap = lv_font_get_glyph_width(this->font_(FontRole::TEXT_LARGE), '0', 0) / 2;
+    lv_obj_t *line = this->row_(col, gap);
+    this->text_(line, item.when_label, FontRole::TITLE, p.text);
+    this->text_(line, item.time, FontRole::TEXT_LARGE, p.text);
     if (!item.icon.empty())
       this->emoji_(line, item.icon, this->m_.emoji_md());
-    this->text_(line, item.title, FontRole::BODY, p.text);
+    this->text_(line, item.title, FontRole::TEXT_LARGE, p.text);
     for (const auto &id : item.people)
       this->avatar_(line, id, this->m_.px(32));
   }
   lv_obj_t *hint = this->text_(col, h.night.has_value() && !h.night->wake_hint.empty() ? h.night->wake_hint
                                                                                       : this->str_("night_wake"),
                                FontRole::SMALL, p.muted);
-  lv_obj_set_style_pad_top(hint, this->m_.px(20), LV_PART_MAIN);
+  lv_obj_set_style_pad_top(hint, this->m_.px(40), LV_PART_MAIN);
 }
 
 // ---- lock ------------------------------------------------------------------
@@ -444,11 +454,11 @@ void SocialHomeDisplay::build_lock_(lv_obj_t *screen) {
   lv_obj_set_style_max_width(household, LV_PCT(100), LV_PART_MAIN);
   lv_label_set_long_mode(household, LV_LABEL_LONG_MODE_WRAP);
   // .dash-lock-time: 160 px light; 96 px with the pad open.
-  lv_obj_t *clock = this->clock_label_(col, open ? FontRole::LOCK : FontRole::NIGHT, p.text);
+  lv_obj_t *clock = this->clock_label_(col, open ? FontRole::LOCK : FontRole::LOCK_TIME, p.text);
   // Roboto's line box is taller than the browser's `line-height: 1`.
   lv_obj_set_style_margin_top(clock, -this->m_.px(open ? 7 : 13), LV_PART_MAIN);
   // .dash-lock-date: 32 px (24 px open), full text colour.
-  lv_obj_t *date = this->text_(col, lock.clock.date, open ? FontRole::BODY : FontRole::LARGE, p.text);
+  lv_obj_t *date = this->text_(col, lock.clock.date, open ? FontRole::BODY : FontRole::TEXT_LARGE, p.text);
   lv_obj_set_style_pad_bottom(date, this->m_.px(open ? 27 : 48), LV_PART_MAIN);
 
   if (!open) {

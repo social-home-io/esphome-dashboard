@@ -411,6 +411,8 @@ Metrics Metrics::compute(int width, int height, float ui_scale) {
 
 int Metrics::px(float design_px) const { return static_cast<int>(std::lround(design_px * this->scale)); }
 
+int Metrics::map_height() const { return std::max(this->px(420), this->height - this->px(104)); }
+
 int Metrics::columns(int avail, int min_col) const {
   int col = std::max(1, this->px(min_col));
   int n = (avail + this->gap()) / (col + this->gap());
@@ -446,7 +448,8 @@ double luminance(uint32_t rgb) {
 
 constexpr uint32_t BLACK = 0x000000;
 constexpr uint32_t WHITE = 0xFFFFFF;
-constexpr uint8_t SCHOOL_ALPHA = 178;  // LV_OPA_70
+constexpr uint8_t SCHOOL_STRIPE_OPA = 41;       // rgb(255 255 255 / 0.16)
+constexpr uint8_t SCHOOL_PAST_STRIPE_OPA = 20;  // rgb(255 255 255 / 0.08)
 constexpr uint8_t PAST_ALPHA = 127;    // LV_OPA_50
 
 }  // namespace
@@ -459,17 +462,62 @@ double contrast_ratio(uint32_t a, uint32_t b) {
 uint32_t ink_on(uint32_t fill) { return contrast_ratio(BLACK, fill) >= contrast_ratio(WHITE, fill) ? BLACK : WHITE; }
 
 BarStyle bar_style(uint32_t color, bool has_ink, uint32_t ink, uint32_t surface, bool school, bool past) {
-  uint32_t alpha = 255;
-  if (school)
-    alpha = alpha * SCHOOL_ALPHA / 255;
-  if (past)
-    alpha = alpha * PAST_ALPHA / 255;
+  const uint32_t alpha = past ? PAST_ALPHA : 255;
   BarStyle style;
   style.alpha = static_cast<uint8_t>(alpha);
+  style.stripe_opa = !school ? 0 : past ? SCHOOL_PAST_STRIPE_OPA : SCHOOL_STRIPE_OPA;
   style.fill = blend_rgb(color, surface, style.alpha);
   style.ink = (alpha == 255 && has_ink) ? ink : ink_on(style.fill);
   return style;
 }
+
+int stripe_tile_width(float scale) {
+  return std::max(8, static_cast<int>(std::lround(8.0 * 16.0 * std::sqrt(2.0) * scale)));
+}
+
+std::vector<uint8_t> stripe_coverage(int w, int h) {
+  std::vector<uint8_t> out(static_cast<size_t>(std::max(0, w)) * std::max(0, h), 0);
+  if (w <= 0 || h <= 0)
+    return out;
+  // A point is striped when its distance from the top-left corner along the
+  // gradient — (x + y) / √2 — falls in the first half of a period; across x
+  // that is (x + y) mod period < period / 2. 4 × 4 samples per pixel.
+  const double period = w / 8.0;
+  constexpr int N = 4;
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      int hits = 0;
+      for (int j = 0; j < N; j++) {
+        for (int i = 0; i < N; i++) {
+          const double t = std::fmod(x + (i + 0.5) / N + y + (j + 0.5) / N, period);
+          if (t < period / 2)
+            hits++;
+        }
+      }
+      out[static_cast<size_t>(y) * w + x] = static_cast<uint8_t>(hits * 255 / (N * N));
+    }
+  }
+  return out;
+}
+
+uint16_t rgb565(uint32_t rgb) {
+  return static_cast<uint16_t>(((rgb >> 8) & 0xF800) | ((rgb >> 5) & 0x07E0) | ((rgb >> 3) & 0x001F));
+}
+
+std::vector<uint16_t> stripe_tile_rgb565(uint32_t fill, uint8_t opa, const std::vector<uint8_t> &coverage) {
+  // One colour per coverage level (anti-aliased edges), then a lookup.
+  uint16_t levels[256];
+  for (int c = 0; c < 256; c++)
+    levels[c] = rgb565(blend_rgb(0xFFFFFF, fill, static_cast<uint8_t>(c * opa / 255)));
+  std::vector<uint16_t> out(coverage.size());
+  for (size_t i = 0; i < coverage.size(); i++)
+    out[i] = levels[coverage[i]];
+  return out;
+}
+
+int LaneGeometry::track_height(int rows) { return BAR_HEIGHT + 2 + ROW_PITCH * (std::max(1, rows) - 1); }
+
+int LaneGeometry::lane_height(int rows) { return BORDER + 2 * PAD + track_height(rows); }
 
 RowStyle row_style(const AgendaRow &row, const Palette &p) {
   const bool cancelled = row.status == Status::CANCELLED;

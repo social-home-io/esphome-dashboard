@@ -57,6 +57,8 @@ FONT_ROLES = (
     "lock",
     "text",
     "text_bold",
+    "lock_time",
+    "text_large",
 )
 
 socialhome_display_ns = cg.esphome_ns.namespace("socialhome_display")

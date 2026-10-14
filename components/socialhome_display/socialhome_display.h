@@ -36,8 +36,11 @@
 namespace esphome::socialhome_display {
 
 /// The fonts the browser dashboard's sizes map onto (see device fonts.yaml).
-/// LOCK is the lock screen's clock with the PIN pad open; TEXT / TEXT_BOLD
-/// the lock screen's 18 px page text (the PIN button, alert, hint).
+/// NIGHT is the night clock (192 px); LOCK_TIME the lock screen's clock
+/// (160 px) and LOCK its clock with the PIN pad open; TEXT / TEXT_BOLD the
+/// lock screen's 18 px page text (the PIN button, alert, hint); TEXT_LARGE
+/// the 32 px night date and "Tomorrow" line, and the lock screen's date.
+/// New roles go last: the YAML `fonts:` keys index this list.
 enum class FontRole : uint8_t {
   SMALL,
   LABEL,
@@ -51,6 +54,8 @@ enum class FontRole : uint8_t {
   LOCK,
   TEXT,
   TEXT_BOLD,
+  LOCK_TIME,
+  TEXT_LARGE,
   COUNT
 };
 
@@ -209,6 +214,8 @@ class SocialHomeDisplay : public Component {
   lv_obj_t *rich_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color);
   /// One line of text with its emoji in place, at most `max_width` wide
   /// (cut with "…").
+  /// Width of `text` (emoji stripped, as text_ draws it) on one line.
+  int text_width_(const std::string &text, FontRole font) const;
   lv_obj_t *inline_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color, int max_width);
   /// Emoji drawn inside text of `font`: about the line height.
   int emoji_px_(FontRole font) const;
@@ -242,6 +249,9 @@ class SocialHomeDisplay : public Component {
   lv_obj_t *note_icon_(lv_obj_t *parent, bool refresh, int size, uint32_t color);
   void build_overview_(lv_obj_t *parent);         // ui_overview.cpp
   void build_timeline_(lv_obj_t *parent, const Timeline &line);
+  /// A school bar's stripe tile over `fill` (stripe_tile_rgb565), `h` px
+  /// high; made once per fill and opacity, nullptr past MAX_STRIPE_TILES.
+  const lv_image_dsc_t *stripe_tile_(uint32_t fill, uint8_t opa, int h);
   void build_messages_tab_(lv_obj_t *parent);     // ui_tabs.cpp
   void build_notes_tab_(lv_obj_t *parent);
   void build_map_tab_(lv_obj_t *parent);
@@ -343,6 +353,18 @@ class SocialHomeDisplay : public Component {
   HttpWorker api_{"sh_api", 4};
   ImageCache images_;
   MapPicture map_;
+  /// School stripe tiles, one per bar fill and opacity: a household has a
+  /// handful of colours, × running / past, × light / dark / night. Kept
+  /// for the panel's life (bars on screen point at them).
+  struct StripeTile {
+    uint32_t fill{0};
+    uint8_t opa{0};
+    std::vector<uint16_t> pixels;  ///< RGB565
+    lv_image_dsc_t dsc{};
+  };
+  static constexpr size_t MAX_STRIPE_TILES = 32;
+  std::vector<std::unique_ptr<StripeTile>> stripes_;
+  std::vector<uint8_t> stripe_coverage_;
   uint32_t next_id_{1};
   uint32_t board_request_{0};
   uint32_t theme_request_{0};
