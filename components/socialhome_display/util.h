@@ -180,6 +180,17 @@ double contrast_ratio(uint32_t a, uint32_t b);
 /// contrast.ink_on (the rule behind every lane's `ink`).
 uint32_t ink_on(uint32_t fill);
 
+/// `color` moved `weight` (0 … 1) of the way to `toward`, channel by
+/// channel in sRGB, rounded half to even — Social Home's contrast.mix_srgb.
+uint32_t mix_srgb(uint32_t color, uint32_t toward, double weight);
+
+/// A person's Map frame (the browser's `--kf`, Social Home's
+/// contrast.frame_color): their colour nudged toward black on the light
+/// bubble (#ffffff) or white on the dark one (#3d3a35) in 5 % steps until
+/// it reaches 3:1 against that bubble. The display API sends only the
+/// colour, so the panel derives the frame as the server does.
+uint32_t map_frame_color(uint32_t color, bool dark);
+
 /// How a bar on the Today timeline is painted.
 struct BarStyle {
   uint32_t fill;       ///< the bar as drawn, already composited over the card

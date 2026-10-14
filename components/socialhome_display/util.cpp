@@ -461,6 +461,29 @@ double contrast_ratio(uint32_t a, uint32_t b) {
 
 uint32_t ink_on(uint32_t fill) { return contrast_ratio(BLACK, fill) >= contrast_ratio(WHITE, fill) ? BLACK : WHITE; }
 
+uint32_t mix_srgb(uint32_t color, uint32_t toward, double weight) {
+  uint32_t out = 0;
+  for (int shift = 16; shift >= 0; shift -= 8) {
+    const double a = (color >> shift) & 0xFF, b = (toward >> shift) & 0xFF;
+    // Python's round(): halves go to the even neighbour (nearbyint's
+    // default rounding mode).
+    const auto v = static_cast<uint32_t>(std::clamp(std::nearbyint(a + (b - a) * weight), 0.0, 255.0));
+    out |= v << shift;
+  }
+  return out;
+}
+
+uint32_t map_frame_color(uint32_t color, bool dark) {
+  const uint32_t bubble = dark ? 0x3D3A35 : 0xFFFFFF;
+  const uint32_t toward = dark ? WHITE : BLACK;
+  for (int step = 0; step <= 20; step++) {
+    const uint32_t frame = mix_srgb(color, toward, step / 20.0);
+    if (contrast_ratio(frame, bubble) >= 3.0)
+      return frame;
+  }
+  return toward;
+}
+
 BarStyle bar_style(uint32_t color, bool has_ink, uint32_t ink, uint32_t surface, bool school, bool past) {
   const uint32_t alpha = past ? PAST_ALPHA : 255;
   BarStyle style;

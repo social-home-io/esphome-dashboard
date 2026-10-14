@@ -170,10 +170,13 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
     const Person *person = this->board_->header.find_person(spot.person);
     lv_obj_t *frame = this->box_(item);
     lv_obj_set_size(frame, face, face);
-    lv_obj_set_style_radius(frame, this->m_.px(14), LV_PART_MAIN);
+    lv_obj_set_style_radius(frame, this->m_.px(16), LV_PART_MAIN);
     lv_obj_set_style_border_width(frame, this->m_.px(4), LV_PART_MAIN);
-    lv_obj_set_style_border_color(
-        frame, lv_color_hex(person != nullptr ? person->color.or_else(p.border) : p.border), LV_PART_MAIN);
+    // The frame in --kf: the person's colour at 3:1 on the bubble.
+    const uint32_t frame_color = person != nullptr && person->color.valid
+                                     ? map_frame_color(person->color.rgb, this->scheme_() != Scheme::LIGHT)
+                                     : p.border;
+    lv_obj_set_style_border_color(frame, lv_color_hex(frame_color), LV_PART_MAIN);
     lv_obj_t *avatar = this->avatar_(frame, spot.person, face - this->m_.px(12));
     lv_obj_center(avatar);
     // A spot over an hour old greys and fades its whole face — frame,

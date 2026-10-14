@@ -407,6 +407,32 @@ TEST(stripe_tile_survives_the_16_bit_screen) {
   CHECK_EQ(t[2], rgb565(blend_rgb(0xFFFFFF, fill, 10)));
 }
 
+TEST(map_frame_matches_social_home) {
+  // contrast.mix_srgb, Python's round() included (half to even).
+  CHECK_EQ(mix_srgb(0x000000, 0xFFFFFF, 0.5), 0x808080u);
+  CHECK_EQ(mix_srgb(0x123456, 0x000000, 0.0), 0x123456u);
+  CHECK_EQ(mix_srgb(0x123456, 0xFFFFFF, 1.0), 0xFFFFFFu);
+  CHECK_EQ(mix_srgb(0x050000, 0x000000, 0.5), 0x020000u);  // 2.5 -> 2
+  CHECK_EQ(mix_srgb(0x070000, 0x000000, 0.5), 0x040000u);  // 3.5 -> 4
+  // Social Home's test_frame_colors_match_the_design table.
+  const uint32_t table[][3] = {
+      {0x3E63DD, 0x3E63DD, 0x6582E4}, {0x1F4A3A, 0x1F4A3A, 0x799289}, {0xC8922E, 0xBE8B2C, 0xC8922E},
+      {0xD2552F, 0xD2552F, 0xD66644}, {0x12A594, 0x12A594, 0x12A594}, {0x8E4EC6, 0x8E4EC6, 0xA571D1},
+  };
+  for (const auto &row : table) {
+    CHECK_EQ(map_frame_color(row[0], false), row[1]);
+    CHECK_EQ(map_frame_color(row[0], true), row[2]);
+  }
+  // Every colour reaches 3:1 on both bubbles.
+  for (uint32_t r = 0; r <= 0xFF; r += 0x33)
+    for (uint32_t g = 0; g <= 0xFF; g += 0x33)
+      for (uint32_t b = 0; b <= 0xFF; b += 0x33) {
+        const uint32_t c = (r << 16) | (g << 8) | b;
+        CHECK(contrast_ratio(map_frame_color(c, false), 0xFFFFFF) >= 3.0);
+        CHECK(contrast_ratio(map_frame_color(c, true), 0x3D3A35) >= 3.0);
+      }
+}
+
 TEST(lane_geometry_matches_the_tablet) {
   // .dash-lane: 1 px border + 6 px + .dash-track (44 / 92 / 140) + 6 px.
   CHECK_EQ(LaneGeometry::track_height(1), 44);
