@@ -5,6 +5,9 @@
 // LVGL can settle in between:
 //
 //   shot NAME          write snapshots/<node>/NAME.bmp
+//   dump NAME          write NAME.txt next to the snapshots: every visible
+//                      object's box (x y w h, screen px) and label text, to
+//                      measure the layout against the browser's
 //   tap X Y            click whatever is at (X, Y)
 //   hold X Y           press (X, Y) for 5.5 s (the settings long-press)
 //   type TEXT          put TEXT in the text field on screen and press Enter
@@ -95,6 +98,21 @@ inline void tap(int x, int y) {
   lv_obj_send_event(obj, LV_EVENT_CLICKED, nullptr);
 }
 
+/// One line per visible object, depth first: indent, x y w h, label text.
+inline void dump_tree(std::ofstream &out, lv_obj_t *obj, int depth) {
+  if (lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN))
+    return;
+  lv_area_t a;
+  lv_obj_get_coords(obj, &a);
+  out << std::string(depth * 2, ' ') << a.x1 << ' ' << a.y1 << ' ' << lv_area_get_width(&a) << ' '
+      << lv_area_get_height(&a);
+  if (lv_obj_check_type(obj, &lv_label_class))
+    out << " \"" << lv_label_get_text(obj) << '"';
+  out << '\n';
+  for (uint32_t k = 0; k < lv_obj_get_child_count(obj); k++)
+    dump_tree(out, lv_obj_get_child(obj, k), depth + 1);
+}
+
 /// The command file this panel reads, or "" when another panel has it.
 inline const std::string &resolved_path(const char *configured) {
   static std::string path;
@@ -166,6 +184,14 @@ inline void tick(const char *configured, esphome::sdl::Sdl *display) {
     cmd >> name;
     lv_refr_now(nullptr);
     display->take_snapshot((name + ".bmp").c_str());
+  } else if (verb == "dump") {
+    std::string name;
+    cmd >> name;
+    lv_refr_now(nullptr);
+    const char *dir = std::getenv("ESPHOME_SNAPSHOT_DIR");
+    std::ofstream out((dir != nullptr && dir[0] != '\0' ? std::string(dir) + "/" : std::string()) + name + ".txt");
+    dump_tree(out, lv_screen_active(), 0);
+    dump_tree(out, lv_layer_top(), 0);
   } else if (verb == "tap") {
     int x = 0, y = 0;
     cmd >> x >> y;

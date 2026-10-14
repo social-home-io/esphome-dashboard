@@ -287,6 +287,31 @@ lv_obj_t *SocialHomeDisplay::caps_(lv_obj_t *parent, const std::string &text, ui
   return label;
 }
 
+void SocialHomeDisplay::line_box_(lv_obj_t *obj, FontRole font, float css_line) {
+  const LineBox box = line_box(lv_font_get_line_height(this->font_(font)), this->m_.px(css_line));
+  lv_obj_set_style_pad_top(obj, box.above, LV_PART_MAIN);
+  lv_obj_set_style_pad_bottom(obj, box.below, LV_PART_MAIN);
+  if (lv_obj_check_type(obj, &lv_label_class)) {
+    lv_obj_set_style_text_line_space(obj, box.between, LV_PART_MAIN);
+    return;
+  }
+  // A rich_ row: its lines are flex tracks (one label per word), or one
+  // wrapping label. An emoji is a font line tall too, so a line of only
+  // emoji is as high as one with words.
+  const int font_line = lv_font_get_line_height(this->font_(font));
+  lv_obj_set_style_pad_row(obj, box.between, LV_PART_MAIN);
+  for (uint32_t k = 0; k < lv_obj_get_child_count(obj); k++) {
+    lv_obj_t *child = lv_obj_get_child(obj, k);
+    if (lv_obj_check_type(child, &lv_label_class)) {
+      lv_obj_set_style_text_line_space(child, box.between, LV_PART_MAIN);
+    } else {
+      const int extra = std::max(0, font_line - static_cast<int>(lv_obj_get_style_height(child, LV_PART_MAIN)));
+      lv_obj_set_style_margin_top(child, extra / 2, LV_PART_MAIN);
+      lv_obj_set_style_margin_bottom(child, extra - extra / 2, LV_PART_MAIN);
+    }
+  }
+}
+
 lv_obj_t *SocialHomeDisplay::emoji_(lv_obj_t *parent, const Emoji &emoji, int size) {
   if (!emoji.code.empty()) {
     lv_obj_t *img = lv_image_create(parent);
@@ -573,21 +598,25 @@ lv_obj_t *SocialHomeDisplay::chore_row_(lv_obj_t *parent, const Chore &chore, bo
 
 lv_obj_t *SocialHomeDisplay::message_row_(lv_obj_t *parent, const Message &message, bool show_time, FontRole font) {
   const Palette &p = this->palette_();
+  // .dash-msg: at least 56 px, 6 px / 8 px padding after a 6 px start
+  // border — the accent on a new message, there but unseen on the others.
   lv_obj_t *item = this->row_(parent, this->m_.px(12));
   lv_obj_set_width(item, LV_PCT(100));
+  lv_obj_set_style_min_height(item, this->m_.px(56), LV_PART_MAIN);
   lv_obj_set_style_pad_ver(item, this->m_.px(6), LV_PART_MAIN);
-  lv_obj_set_style_pad_left(item, this->m_.px(12), LV_PART_MAIN);
-  if (message.is_new) {
-    lv_obj_set_style_border_side(item, LV_BORDER_SIDE_LEFT, LV_PART_MAIN);
-    lv_obj_set_style_border_width(item, this->m_.px(5), LV_PART_MAIN);
-    lv_obj_set_style_border_color(item, lv_color_hex(p.accent), LV_PART_MAIN);
-  }
+  lv_obj_set_style_pad_hor(item, this->m_.px(8), LV_PART_MAIN);
+  lv_obj_set_style_radius(item, this->m_.px(10), LV_PART_MAIN);
+  lv_obj_set_style_border_side(item, LV_BORDER_SIDE_LEFT, LV_PART_MAIN);
+  lv_obj_set_style_border_width(item, this->m_.px(6), LV_PART_MAIN);
+  lv_obj_set_style_border_color(item, lv_color_hex(p.accent), LV_PART_MAIN);
+  lv_obj_set_style_border_opa(item, message.is_new ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
   this->avatar_(item, message.person, this->m_.avatar_sm());
   lv_obj_t *line = this->row_(item, this->m_.px(8));
   lv_obj_set_flex_grow(line, 1);
   if (!message.icon.empty())
     this->emoji_(line, message.icon, this->m_.emoji_sm());
   lv_obj_t *text = this->rich_(line, message.text, font, p.text);
+  this->line_box_(text, font, 28.6f);  // .dash-msg-text: line-height 1.3
   lv_obj_set_width(text, 0);
   lv_obj_set_flex_grow(text, 1);
   lv_obj_t *meta = this->row_(item, this->m_.px(8));
@@ -626,7 +655,8 @@ void SocialHomeDisplay::build_frame_(lv_obj_t *screen) {
     lv_obj_add_flag(lock, LV_OBJ_FLAG_FLOATING);
     lv_obj_align(lock, LV_ALIGN_BOTTOM_RIGHT, -this->m_.px(16), -this->m_.px(16));
   }
-  lv_obj_t *main = this->column_(root, this->m_.px(18));
+  const int main_gap = this->m_.px(18);
+  lv_obj_t *main = this->column_(root, main_gap);
   lv_obj_set_flex_grow(main, 1);
   lv_obj_set_height(main, LV_PCT(100));
   lv_obj_add_flag(main, LV_OBJ_FLAG_SCROLLABLE);
@@ -643,6 +673,7 @@ void SocialHomeDisplay::build_frame_(lv_obj_t *screen) {
   // The tab bar, then the alert slot (offline note, @here banners), as on
   // the tablet; a person's page has no tabs and its own mentions.
   for (TopSlot slot : top_slots(home && !b.header.is_night, this->offline_, home)) {
+    const uint32_t before = lv_obj_get_child_count(main);
     switch (slot) {
       case TopSlot::TABS:
         this->build_tabs_(main);
@@ -653,6 +684,14 @@ void SocialHomeDisplay::build_frame_(lv_obj_t *screen) {
       case TopSlot::ALERTS:
         this->build_alerts_(main, b.header.alerts);
         break;
+    }
+    // The tablet spaces the slot on its own, not by the column's gap: 16 px
+    // under the tab bar and under the slot, 12 px between @here banners
+    // (.dash-tabs, .dash-alert-slot > *, .dash-alert-list).
+    const uint32_t after = lv_obj_get_child_count(main);
+    for (uint32_t k = before; k < after; k++) {
+      const int space = slot == TopSlot::ALERTS && k + 1 < after ? this->m_.px(12) : this->m_.px(16);
+      lv_obj_set_style_margin_bottom(lv_obj_get_child(main, k), space - main_gap, LV_PART_MAIN);
     }
   }
   switch (b.kind) {
@@ -772,9 +811,12 @@ void SocialHomeDisplay::build_tabs_(lv_obj_t *parent) {
   for (const auto &tab : h.tabs) {
     lv_obj_t *t = this->row_(bar, this->m_.px(8));
     lv_obj_set_style_pad_hor(t, this->m_.px(16), LV_PART_MAIN);
+    // .dash-tab: 48 px with its 4 px underline, over the bar's 1 px line
+    // (margin-block-end -1px), so the bar is 48 px too.
     lv_obj_set_style_pad_top(t, this->m_.px(10), LV_PART_MAIN);
-    lv_obj_set_style_pad_bottom(t, this->m_.px(12), LV_PART_MAIN);
+    lv_obj_set_style_pad_bottom(t, this->m_.px(8), LV_PART_MAIN);
     lv_obj_set_style_min_height(t, this->m_.tap_min(), LV_PART_MAIN);
+    lv_obj_set_style_margin_bottom(t, -1, LV_PART_MAIN);
     // Every tab carries the underline (transparent unless current) so the
     // labels share a baseline.
     lv_obj_set_style_border_side(t, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN);
@@ -867,8 +909,9 @@ void SocialHomeDisplay::build_alerts_(lv_obj_t *parent, const std::vector<Mentio
     lv_obj_set_style_bg_color(inner, lv_color_hex(p.surface), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(inner, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_radius(inner, this->m_.px(12), LV_PART_MAIN);
-    lv_obj_set_style_pad_hor(inner, this->m_.px(14), LV_PART_MAIN);
-    lv_obj_set_style_pad_ver(inner, this->m_.px(12), LV_PART_MAIN);
+    // .dash-alert: padding 14px 16px inside the 2 px frame.
+    lv_obj_set_style_pad_hor(inner, this->m_.px(16), LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(inner, this->m_.px(14), LV_PART_MAIN);
     this->avatar_(inner, alert.person, this->m_.avatar_sm());
     lv_obj_t *body = this->column_(inner, this->m_.px(4));
     lv_obj_set_flex_grow(body, 1);
