@@ -420,6 +420,55 @@ int Metrics::pct(int percent, int total) {
   return static_cast<int>(std::lround(percent * total / 100.0));
 }
 
+uint32_t blend_rgb(uint32_t fg, uint32_t bg, uint8_t alpha) {
+  uint32_t out = 0;
+  for (int shift = 0; shift <= 16; shift += 8) {
+    uint32_t f = (fg >> shift) & 0xFF;
+    uint32_t b = (bg >> shift) & 0xFF;
+    uint32_t c = (f * alpha + b * (255u - alpha) + 127u) / 255u;
+    out |= c << shift;
+  }
+  return out;
+}
+
+namespace {
+
+double channel(uint32_t value) {
+  double c = value / 255.0;
+  return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+}
+
+double luminance(uint32_t rgb) {
+  return 0.2126 * channel((rgb >> 16) & 0xFF) + 0.7152 * channel((rgb >> 8) & 0xFF) + 0.0722 * channel(rgb & 0xFF);
+}
+
+constexpr uint32_t BLACK = 0x000000;
+constexpr uint32_t WHITE = 0xFFFFFF;
+constexpr uint8_t SCHOOL_ALPHA = 178;  // LV_OPA_70
+constexpr uint8_t PAST_ALPHA = 127;    // LV_OPA_50
+
+}  // namespace
+
+double contrast_ratio(uint32_t a, uint32_t b) {
+  double la = luminance(a), lb = luminance(b);
+  return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+}
+
+uint32_t ink_on(uint32_t fill) { return contrast_ratio(BLACK, fill) >= contrast_ratio(WHITE, fill) ? BLACK : WHITE; }
+
+BarStyle bar_style(uint32_t color, bool has_ink, uint32_t ink, uint32_t surface, bool school, bool past) {
+  uint32_t alpha = 255;
+  if (school)
+    alpha = alpha * SCHOOL_ALPHA / 255;
+  if (past)
+    alpha = alpha * PAST_ALPHA / 255;
+  BarStyle style;
+  style.alpha = static_cast<uint8_t>(alpha);
+  style.fill = blend_rgb(color, surface, style.alpha);
+  style.ink = (alpha == 255 && has_ink) ? ink : ink_on(style.fill);
+  return style;
+}
+
 void hand_end(float deg, int cx, int cy, int len, int *x, int *y) {
   float rad = deg * static_cast<float>(M_PI) / 180.0f;
   *x = cx + static_cast<int>(std::lround(std::sin(rad) * len));
