@@ -1,9 +1,7 @@
 # Pinned Social Home display API contract (schemas + fixtures).
 # Copied verbatim from social-home-io/socialhome docs/display-api/v1/ at the
-# head of social-home-io/socialhome#934 (the lock screen like the wall tablet:
-# is_night, tries_left / last_try / forgot_pin; on top of #933). Re-pin to its
-# merge commit.
+# merge of social-home-io/socialhome#934 (the lock screen like the wall tablet).
 # Update: bump SOCIALHOME_REF, run `python3 scripts/display_api_contract.py --update`,
 # then fix the parser / host tests until `tests/cpp` passes again.
 SOCIALHOME_REPO=social-home-io/socialhome
-SOCIALHOME_REF=1b3336c3e18366f19ac76d513599b6f5f29d7578
+SOCIALHOME_REF=4a072755616a87dcd4d1ac1c19d840c5f8fade9d
