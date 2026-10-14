@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-// Which palette the panel draws with: the household's colour mode × the
-// server's night flag × the night clock — and the cached theme choosing the
-// same as the live one.
+// Which palette the panel draws with, as the browser dashboard picks it: the
+// household's colour mode × the server's night flag × the night board (the
+// night clock or the dashboard woken from it) — and the cached theme choosing
+// the same as the live one.
 #include "check.h"
 #include "parser.h"
 #include "theme_cache.h"
@@ -9,7 +10,8 @@
 using namespace esphome::socialhome_display;
 
 TEST(scheme_auto_follows_the_night_window) {
-  // A panel has no OS setting to follow: light by day, dark at night.
+  // A panel has no OS setting to follow: light by day, dark at night — for
+  // everything but the night board (lock screen, PIN pad, settings, setup).
   CHECK(scheme_for("auto", false, false) == Scheme::LIGHT);
   CHECK(scheme_for("auto", true, false) == Scheme::DARK);
 }
@@ -21,7 +23,8 @@ TEST(scheme_light_and_dark_stay_fixed) {
   CHECK(scheme_for("dark", true, false) == Scheme::DARK);
 }
 
-TEST(scheme_night_clock_is_always_night) {
+TEST(scheme_night_board_is_night_in_every_mode) {
+  // The night clock and the board woken from it: the browser's .dash-night.
   for (const char *mode : {"auto", "light", "dark", ""})
     CHECK(scheme_for(mode, true, true) == Scheme::NIGHT);
 }

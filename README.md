@@ -153,16 +153,19 @@ for a panel that never reached a server (and for a server older than the one
 pinned in `tests/fixtures/display-api/SOURCE`). Emoji are pictures (Twemoji, CC-BY 4.0) from the server, as the
 fonts carry none.
 
-The theme's colour mode picks the palette. **Light** and **Dark** stay as they
-are, day and night. **Auto** has no system setting to follow on a panel, so it
-draws the light palette by day and the dark one during the household's night
+The panel picks its palette as the browser dashboard does. In the household's
+night window the night screen — and the dashboard someone wakes from it, which
+hides its tabs and "See all" links like the browser — always uses the night
+palette, whatever the colour mode. Everything else (the lock screen and PIN
+pad, settings, setup and error screens) follows the theme's colour mode:
+**Light** and **Dark** stay as they are, day and night; **Auto** has no system
+setting to follow on a panel, so it is light by day and dark during the night
 window. "Night" is the server's `is_night` flag on each board — the same flag
 that brings up the night screen and dims the backlight, computed from the
 board settings' night start / end on the household's clock — so the panel and
-the browser dashboard switch together, at the next poll, without a reboot.
-While the panel is locked or can't reach the server it keeps the last board's
-flag; before the first board (setup, first boot) it is day. The night screen
-itself always uses the night palette.
+the browser switch together, at the next poll, without a reboot. While the
+panel is locked or can't reach the server it keeps the last board's flag;
+before the first board (setup, first boot) it is day.
 
 ## Development
 

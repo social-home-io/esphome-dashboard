@@ -600,17 +600,19 @@ struct StringPair {
 enum class Scheme : uint8_t { LIGHT, DARK, NIGHT };
 
 /// The palette for the household's colour `mode` ("light" / "dark" /
-/// "auto"). `night`: the household's night window is on — the server's
-/// `is_night` flag on the last board, the same flag that brings up the night
-/// screen and dims the backlight, so the panel and the browser dashboard
-/// agree on when night starts. `night_screen`: the night clock is up (night,
-/// and nobody tapped it to see the dashboard).
+/// "auto"), as the browser dashboard picks it. `night`: the household's
+/// night window is on — the server's `is_night` flag on the last board, the
+/// same flag that brings up the night screen and dims the backlight, so the
+/// panel and the browser agree on when night starts. `night_board`: the
+/// board is up in the night window — the night clock, or the dashboard
+/// someone woke from it.
 ///
-/// The night clock always draws with the night palette. Everything else:
-/// "light" and "dark" stay as they are, day and night; "auto" — a panel has
-/// no OS setting to follow — is light by day and dark in the night window.
-/// An unknown mode counts as "auto".
-Scheme scheme_for(const std::string &mode, bool night, bool night_screen);
+/// The night board always draws with the night palette, in every mode (the
+/// browser's `.dash-night`). Everything else (lock screen, PIN pad,
+/// settings, setup and error screens): "light" and "dark" stay as they are,
+/// day and night; "auto" — a panel has no OS setting to follow — is light by
+/// day and dark in the night window. An unknown mode counts as "auto".
+Scheme scheme_for(const std::string &mode, bool night, bool night_board);
 
 struct Theme {
   int api_version{0};

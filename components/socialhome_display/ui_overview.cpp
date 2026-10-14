@@ -80,7 +80,7 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
     lv_obj_set_width(head, LV_PCT(100));
     lv_obj_set_flex_align(head, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     this->caps_(head, o.messages->label, p.muted);
-    if (o.messages->see_all) {
+    if (o.messages->see_all && !this->board_->header.is_night) {
       lv_obj_t *see = this->text_(head, this->str_("see_all") + " \xE2\x80\xBA", FontRole::LABEL, p.accent);
       lv_obj_add_flag(see, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_set_ext_click_area(see, this->m_.px(12));
@@ -191,7 +191,7 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
     lv_obj_set_width(head, LV_PCT(100));
     lv_obj_set_flex_align(head, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     this->caps_(head, o.notes->label, p.muted);
-    if (o.notes->see_all) {
+    if (o.notes->see_all && !this->board_->header.is_night) {
       lv_obj_t *see = this->text_(head, this->str_("see_all") + " \xE2\x80\xBA", FontRole::LABEL, p.accent);
       lv_obj_add_flag(see, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_set_ext_click_area(see, this->m_.px(12));

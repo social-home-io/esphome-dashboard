@@ -345,6 +345,8 @@ class SocialHomeDisplay : public Component {
   std::string offline_since_;
   std::set<std::string> dismissed_;
   bool night_peek_{false};
+  /// True while the settings sheet (an overlay, not the board) is built.
+  bool building_overlay_{false};
   bool screen_off_{false};
   float last_brightness_{-1.0f};
   std::string last_minute_;

@@ -754,8 +754,8 @@ const Palette &Theme::palette(Scheme scheme) const {
   }
 }
 
-Scheme scheme_for(const std::string &mode, bool night, bool night_screen) {
-  if (night_screen)
+Scheme scheme_for(const std::string &mode, bool night, bool night_board) {
+  if (night_board)
     return Scheme::NIGHT;
   if (mode == "light")
     return Scheme::LIGHT;
