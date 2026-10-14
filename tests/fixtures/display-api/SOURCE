@@ -1,7 +1,8 @@
 # Pinned Social Home display API contract (schemas + fixtures).
 # Copied verbatim from social-home-io/socialhome docs/display-api/v1/ at the
-# merge of social-home-io/socialhome#934 (the lock screen like the wall tablet).
+# head of social-home-io/socialhome#938 (ha_unlock: Home Assistant may unlock
+# wall panels). Re-pin to #938's merge commit before merging.
 # Update: bump SOCIALHOME_REF, run `python3 scripts/display_api_contract.py --update`,
 # then fix the parser / host tests until `tests/cpp` passes again.
 SOCIALHOME_REPO=social-home-io/socialhome
-SOCIALHOME_REF=4a072755616a87dcd4d1ac1c19d840c5f8fade9d
+SOCIALHOME_REF=3f44e10b365ea7711627f84f0e03ee5dacce9ba7
