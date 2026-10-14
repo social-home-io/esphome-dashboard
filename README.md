@@ -132,10 +132,18 @@ builds/host-sdl.yaml           the app in a headless SDL window, for screenshots
   429 Retry-After), clock, idle return, night dimming, screen-off timeout.
 - `ui_*.cpp`: the screens, laid out from the 1280×800 browser dashboard and
   scaled from `screen_width` / `screen_height` / `ui_scale`.
+- `panel_strings.*` / `theme_cache.*`: the words the panel draws itself and
+  the last theme kept across reboots.
 
-Every string a person reads comes from the server in the household's language;
-the panel's own English is only for the setup screens. Emoji are pictures
-(Twemoji, CC-BY 4.0) from the server, as the fonts carry none.
+Every string a person reads comes from the server in the household's language:
+the boards carry their own words, and the theme (`GET /theme`) carries the
+panel's — setup, pairing, errors, the PIN pad, settings, the Improv prompt.
+The panel keeps the last theme's language, colours and those strings in flash,
+so after a reboot or "Forget server" the setup screens still speak the
+household's language before any server answers. Its built-in English is only
+for a panel that never reached a server, and for the few strings the theme
+doesn't carry. Emoji are pictures (Twemoji, CC-BY 4.0) from the server, as the
+fonts carry none.
 
 ## Development
 

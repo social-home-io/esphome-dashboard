@@ -8,7 +8,9 @@
   emoji runs), the map-picture fetch policy, the PNG decoders, which mDNS
   answers the address screen lists (and the URL a tap sets) and the sealed
   connect claim (X25519 / HKDF / AES-GCM and strict base64url) against
-  Social Home's shared vectors (`sealed-claim-vectors.json`). Mbed TLS 3.6
+  Social Home's shared vectors (`sealed-claim-vectors.json`), the panel's
+  strings (theme or built-in English, `{n}` / `{host}` filled safely) and the
+  cached theme (round-trip through the stored chunks, damage ignored). Mbed TLS 3.6
   (the line ESP-IDF ships) is fetched and built with the tests. `png_bench`
   (built alongside, not a test) times the map picture's decode:
   `build/tests/png_bench map.png`.

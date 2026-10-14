@@ -765,10 +765,7 @@ void SocialHomeDisplay::build_alerts_(lv_obj_t *parent, const std::vector<Mentio
 
 void SocialHomeDisplay::build_offline_(lv_obj_t *parent) {
   const Palette &p = this->palette_();
-  std::string text = this->str_("offline");
-  size_t at = text.find("{time}");
-  if (at != std::string::npos)
-    text.replace(at, 6, this->offline_since_);
+  const std::string text = fill_placeholder(this->str_("offline"), "time", this->offline_since_);
   lv_obj_t *note = this->box_(parent);
   lv_obj_set_width(note, LV_PCT(100));
   lv_obj_set_style_bg_color(note, lv_color_hex(p.error_bg), LV_PART_MAIN);
