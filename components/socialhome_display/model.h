@@ -384,10 +384,22 @@ struct MapPin {
   bool occupied{false};
 };
 
+/// The map as one picture (GET {url}?w=&h=&scheme=light|dark).
+struct MapImage {
+  std::string url;
+  int width{0};   ///< default size: the firmware's map area on 1280×800
+  int height{0};
+  std::string etag;  ///< ETag of the default (light) picture now
+};
+
 struct MapTab {
   std::string title;
   std::string label;
   std::string attribution;
+  /// `image` in the JSON: absent from servers before the map picture,
+  /// null when the server has no tile source.
+  bool image_field{false};
+  std::optional<MapImage> image;
   std::vector<MapSpot> spots;
   std::vector<MapPin> pins;
 };
@@ -556,9 +568,14 @@ struct LockScreen {
   std::string unlock;
   std::string del;
   std::string wrong_pin;
-  /// Not in v1 yet (comes with the server's unlock endpoint): where to POST
-  /// {"pin"}. Empty means the PIN can't be entered on the panel.
-  std::string unlock_path;
+};
+
+/// An error body ({"error": {"code", "detail", "params"}}).
+struct ApiError {
+  std::string code;
+  std::string detail;
+  int remaining{-1};    ///< DISPLAY_PIN_WRONG: wrong PINs left (-1: not sent)
+  int retry_after{0};   ///< RATE_LIMITED from /unlock: seconds
 };
 
 struct Palette {

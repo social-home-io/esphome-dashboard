@@ -197,6 +197,29 @@ TEST(map_tab) {
   CHECK(b.map.pins[2].icon.code.empty());
   CHECK_EQ(b.map.pins[2].icon.text, std::string("W"));
   CHECK_EQ(b.map.attribution, std::string("\xC2\xA9 OpenStreetMap contributors"));
+  CHECK(b.map.image_field);
+  CHECK(b.map.image.has_value());
+  CHECK_EQ(b.map.image->url, std::string("/api/display/v1/map.png"));
+  CHECK_EQ(b.map.image->width, 748);
+  CHECK_EQ(b.map.image->height, 560);
+  CHECK_EQ(b.map.image->etag, std::string("\"054b8fa50fdea399bc76398c501de86d\""));
+}
+
+TEST(map_image_null_or_missing) {
+  std::string json = check::fixture("map.json");
+  size_t at = json.find("\"image\": {");
+  size_t end = json.find('}', at);
+  CHECK(at != std::string::npos && end != std::string::npos);
+  std::string null_image = json.substr(0, at) + "\"image\": null" + json.substr(end + 1);
+  Board b;
+  CHECK(parse_board(null_image.data(), null_image.size(), b) == ParseResult::OK);
+  CHECK(b.map.image_field);
+  CHECK(!b.map.image.has_value());
+  // A server from before the map picture sends no `image` at all.
+  std::string old = json.substr(0, at) + "\"no_image\": null" + json.substr(end + 1);
+  CHECK(parse_board(old.data(), old.size(), b) == ParseResult::OK);
+  CHECK(!b.map.image_field);
+  CHECK(!b.map.image.has_value());
 }
 
 TEST(person_picture) {
@@ -261,7 +284,7 @@ TEST(lock_screen) {
   CHECK_EQ(lock.locked, std::string("Screen locked"));
   CHECK_EQ(lock.enter_pin, std::string("Enter PIN"));
   CHECK_EQ(lock.del, std::string("Delete last digit"));
-  CHECK(lock.unlock_path.empty());
+  CHECK_EQ(lock.wrong_pin, std::string("Wrong PIN"));
   // A board is not a lock body.
   std::string home = check::fixture("home.json");
   CHECK(parse_lock(home.data(), home.size(), lock) == ParseResult::BAD_SHAPE);
@@ -368,4 +391,47 @@ TEST(error_codes) {
   const char *night = R"({"error": {"code": "NIGHT", "detail": "Night mode shows Overview only."}})";
   CHECK_EQ(parse_error_code(night, strlen(night)), std::string("NIGHT"));
   CHECK_EQ(parse_error_code("oops", 4), std::string(""));
+}
+
+TEST(unlock_answers) {
+  std::string ok = check::fixture("unlocked.json");
+  CHECK(parse_unlocked(ok.data(), ok.size()) == ParseResult::OK);
+  const char *still = R"({"api_version": 1, "locked": true})";
+  CHECK(parse_unlocked(still, strlen(still)) == ParseResult::BAD_SHAPE);
+  const char *newer = R"({"api_version": 2, "locked": false})";
+  CHECK(parse_unlocked(newer, strlen(newer)) == ParseResult::WRONG_VERSION);
+  std::string wrong = check::fixture("pin-wrong.json");
+  ApiError e = parse_error(wrong.data(), wrong.size());
+  CHECK_EQ(e.code, std::string("DISPLAY_PIN_WRONG"));
+  CHECK_EQ(e.remaining, 4);
+  CHECK_EQ(e.retry_after, 0);
+  const char *limited = R"({"error": {"code": "RATE_LIMITED", "params": {"retry_after": 42}}})";
+  e = parse_error(limited, strlen(limited));
+  CHECK_EQ(e.code, std::string("RATE_LIMITED"));
+  CHECK_EQ(e.remaining, -1);
+  CHECK_EQ(e.retry_after, 42);
+  const char *signed_out = R"({"error": {"code": "DISPLAY_SIGNED_OUT", "detail": "x"}})";
+  CHECK_EQ(parse_error(signed_out, strlen(signed_out)).code, std::string("DISPLAY_SIGNED_OUT"));
+  CHECK_EQ(parse_error("", 0).code, std::string(""));
+  // POST /lock answers with the lock screen.
+  std::string locked = check::fixture("locked.json");
+  LockScreen lock;
+  CHECK(parse_lock(locked.data(), locked.size(), lock) == ParseResult::OK);
+}
+
+TEST(request_bodies) {
+  CHECK_EQ(unlock_body("0420"), std::string(R"({"pin":"0420"})"));
+  CHECK_EQ(unlock_body("1\"2"), std::string(R"({"pin":"1\"2"})"));
+  CHECK_EQ(ack_body(Ack{"h1", ""}), std::string(R"({"message_id":"h1","person_id":null})"));
+  CHECK_EQ(ack_body(Ack{"p1", "u-leo"}), std::string(R"({"message_id":"p1","person_id":"u-leo"})"));
+  // The ack ids come from the board as they are.
+  Board b = board("person-picture.json");
+  CHECK(b.mentions[0].ack.has_value());
+  CHECK_EQ(ack_body(*b.mentions[0].ack), std::string(R"({"message_id":"p1","person_id":"u-leo"})"));
+  Board home = board("home.json");
+  CHECK(home.header.alerts[0].ack.has_value());
+  CHECK_EQ(ack_body(*home.header.alerts[0].ack), std::string(R"({"message_id":"h1","person_id":null})"));
+  std::string acked = check::fixture("ack.json");
+  CHECK(parse_acknowledged(acked.data(), acked.size()) == ParseResult::OK);
+  CHECK(parse_acknowledged("{}", 2) == ParseResult::WRONG_VERSION);
 }

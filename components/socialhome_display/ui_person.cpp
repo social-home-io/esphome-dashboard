@@ -137,11 +137,11 @@ lv_obj_t *SocialHomeDisplay::build_tile_(lv_obj_t *parent, const Tile &tile, int
   if (!tile.icon.empty())
     this->emoji_(t, tile.icon, size * 52 / 100);
   if (!tile.caption.empty()) {
-    lv_obj_t *caption = this->text_(t, tile.caption, FontRole::SMALL, p.muted);
-    lv_obj_set_style_max_width(caption, size * 2, LV_PART_MAIN);
-    lv_label_set_long_mode(caption, LV_LABEL_LONG_MODE_DOTS);
-    if (tile.cancelled)
-      lv_obj_set_style_text_decor(caption, LV_TEXT_DECOR_STRIKETHROUGH, LV_PART_MAIN);
+    lv_obj_t *caption = this->inline_(t, tile.caption, FontRole::SMALL, p.muted, size * 2);
+    if (tile.cancelled) {
+      for (uint32_t k = 0; k < lv_obj_get_child_count(caption); k++)
+        lv_obj_set_style_text_decor(lv_obj_get_child(caption, k), LV_TEXT_DECOR_STRIKETHROUGH, LV_PART_MAIN);
+    }
   }
   if (tile.past || tile.cancelled)
     lv_obj_set_style_opa(t, LV_OPA_60, LV_PART_MAIN);
@@ -297,6 +297,23 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
   const Palette &p = this->palette_();
   const Picture &pv = *this->board_->picture;
   const int gap = this->m_.gap();
+  // The 💬 on a face (the Twemoji picture: a pale bubble with three dots),
+  // on a round badge so it reads on any face; a new message's badge is
+  // filled with the accent, as on the tablet.
+  auto speech_badge = [&](lv_obj_t *face, bool fresh) {
+    lv_obj_t *badge = this->box_(face);
+    const int d = this->m_.px(fresh ? 46 : 40);
+    lv_obj_set_size(badge, d, d);
+    lv_obj_add_flag(badge, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(badge, lv_color_hex(fresh ? p.accent : p.surface), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(badge, lv_color_hex(p.surface), LV_PART_MAIN);
+    lv_obj_set_style_border_width(badge, std::max(2, this->m_.px(3)), LV_PART_MAIN);
+    lv_obj_align(badge, LV_ALIGN_BOTTOM_RIGHT, this->m_.px(fresh ? 12 : 8), this->m_.px(fresh ? 10 : 6));
+    lv_obj_t *bubble = this->emoji_(badge, Emoji{"\xF0\x9F\x92\xAC", "1f4ac"}, d * 62 / 100);
+    lv_obj_center(bubble);
+  };
 
   // Messages for this child: the sender's face, a speech bubble, "Got it".
   for (const auto &mention : this->board_->mentions) {
@@ -312,11 +329,8 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
     lv_obj_t *who = this->column_(card, this->m_.px(6));
     lv_obj_set_flex_align(who, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_t *face = this->avatar_(who, mention.person, this->m_.px(88));
-    lv_obj_t *bubble = this->emoji_(face, Emoji{"\xF0\x9F\x92\xAC", "1f4ac"}, this->m_.px(40));
-    lv_obj_align(bubble, LV_ALIGN_BOTTOM_RIGHT, this->m_.px(4), this->m_.px(4));
-    lv_obj_t *caption = this->text_(who, mention.caption, FontRole::SMALL, p.muted);
-    lv_obj_set_style_max_width(caption, this->m_.px(200), LV_PART_MAIN);
-    lv_label_set_long_mode(caption, LV_LABEL_LONG_MODE_DOTS);
+    speech_badge(face, true);
+    this->inline_(who, mention.caption, FontRole::SMALL, p.muted, this->m_.px(200));
     if (mention.ack.has_value()) {
       lv_obj_t *ok = this->box_(card);
       int d = this->m_.px(88);
@@ -348,9 +362,7 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
       this->caps_(t, label, p.muted);
       if (!tile.icon.empty())
         this->emoji_(t, tile.icon, this->m_.px(84));
-      lv_obj_t *caption = this->text_(t, tile.caption, FontRole::BODY, p.muted);
-      lv_obj_set_style_max_width(caption, this->m_.px(176), LV_PART_MAIN);
-      lv_label_set_long_mode(caption, LV_LABEL_LONG_MODE_DOTS);
+      this->inline_(t, tile.caption, FontRole::BODY, p.muted, this->m_.px(176));
       if (next && pv.next_pie.has_value()) {
         lv_obj_t *pie = this->box_(t);
         int d = this->m_.px(42);
@@ -400,12 +412,8 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
       lv_obj_t *item = this->column_(row, this->m_.px(6));
       lv_obj_set_flex_align(item, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
       lv_obj_t *face = this->avatar_(item, msg.person, this->m_.px(88));
-      lv_obj_t *bubble = this->emoji_(face, Emoji{"\xF0\x9F\x92\xAC", "1f4ac"}, this->m_.px(40));
-      lv_obj_align(bubble, LV_ALIGN_BOTTOM_RIGHT, this->m_.px(4), this->m_.px(4));
-      lv_obj_t *caption = this->text_(item, msg.caption, FontRole::SMALL, p.muted);
-      lv_obj_set_width(caption, this->m_.px(170));
-      lv_label_set_long_mode(caption, LV_LABEL_LONG_MODE_DOTS);
-      lv_obj_set_style_text_align(caption, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+      speech_badge(face, msg.is_new);
+      this->inline_(item, msg.caption, FontRole::SMALL, p.muted, this->m_.px(170));
     }
   }
 

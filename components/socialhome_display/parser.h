@@ -31,6 +31,18 @@ ParseResult parse_pair_start(const char *data, size_t len, PairStart &out);
 ParseResult parse_pair_status(const char *data, size_t len, PairStatus &out);
 /// `error.code` of an error body ("NIGHT", "TAB_OFF", …), empty if none.
 std::string parse_error_code(const char *data, size_t len);
+/// The whole error body (code, detail, params); empty code if none.
+ApiError parse_error(const char *data, size_t len);
+/// 200 of POST /unlock: true when the panel is unlocked ({"locked": false}).
+ParseResult parse_unlocked(const char *data, size_t len);
+/// 200 of POST /ack ({"acknowledged": true}).
+ParseResult parse_acknowledged(const char *data, size_t len);
+
+/// Body of POST /unlock: {"pin": "…"}.
+std::string unlock_body(const std::string &pin);
+/// Body of POST /ack: the mention's ack object as it came (person_id null
+/// for @here).
+std::string ack_body(const Ack &ack);
 
 /// "#2f6f5e" → colour; anything else → invalid (neutral look).
 Color parse_color(const char *text);

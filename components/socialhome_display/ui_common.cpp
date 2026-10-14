@@ -104,49 +104,110 @@ lv_obj_t *SocialHomeDisplay::wrap_(lv_obj_t *parent, const std::string &text, Fo
   return label;
 }
 
-namespace {
-/// Text + emoji row: keep the emoji right after a short text, and let a long
-/// text wrap across the full width (its emoji then follow on the next line).
-void fit_rich(lv_event_t *event) {
-  lv_obj_t *row = lv_event_get_current_target_obj(event);
-  lv_obj_t *label = lv_obj_get_child(row, 0);
-  if (label == nullptr)
-    return;
-  int32_t avail = lv_obj_get_content_width(row);
-  if (avail <= 0)
-    return;
-  int32_t extra = 0;
-  for (uint32_t k = 1; k < lv_obj_get_child_count(row); k++)
-    extra += lv_obj_get_width(lv_obj_get_child(row, k)) + lv_obj_get_style_pad_column(row, LV_PART_MAIN);
-  lv_point_t size;
-  lv_text_get_size(&size, lv_label_get_text(label), lv_obj_get_style_text_font(label, LV_PART_MAIN),
-                   lv_obj_get_style_text_letter_space(label, LV_PART_MAIN), 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
-  int32_t want = size.x + extra <= avail ? LV_SIZE_CONTENT : LV_PCT(100);
-  if (lv_obj_get_style_width(label, LV_PART_MAIN) != want)
-    lv_obj_set_width(label, want);
+int SocialHomeDisplay::emoji_px_(FontRole font) const {
+  // A touch under the line height, so a line with an emoji isn't taller.
+  return std::max(12, static_cast<int>(lv_font_get_line_height(this->font_(font))) * 9 / 10);
 }
-}  // namespace
 
 lv_obj_t *SocialHomeDisplay::rich_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color) {
-  // Text and its emoji (as pictures, after the words): the fonts have none.
-  lv_obj_t *row = this->row_(parent, this->m_.px(6));
+  // The fonts carry no emoji: each word is a label and each emoji a picture
+  // in one wrapping row, so the emoji stay where they were typed.
+  lv_obj_t *row = this->row_(parent, 0);
   lv_obj_set_width(row, LV_PCT(100));
   lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_START);
-  lv_obj_t *label = this->text_(row, text, font, color);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_WRAP);
-  auto codes = emoji_codes(text, 3);
-  if (codes.empty()) {
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+  auto runs = text_runs(text, true);
+  bool has_emoji = std::any_of(runs.begin(), runs.end(), [](const TextRun &r) { return r.kind == TextRun::EMOJI; });
+  // Without emoji (or for a long text, where a label per word would cost
+  // too much memory) one wrapping label does it.
+  static constexpr size_t MAX_PIECES = 80;
+  if (!has_emoji || runs.size() > MAX_PIECES) {
+    lv_obj_t *label = this->text_(row, text, font, color);
     lv_obj_set_width(label, LV_PCT(100));
+    lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_WRAP);
+    if (has_emoji) {
+      for (const auto &code : emoji_codes(text, 3))
+        this->emoji_(row, Emoji{"", code}, this->emoji_px_(font));
+    }
     return row;
   }
-  int size = font == FontRole::LARGE ? this->m_.px(30) : font == FontRole::SMALL ? this->m_.px(18) : this->m_.px(26);
-  for (const auto &code : codes) {
-    lv_obj_t *img = this->emoji_(row, Emoji{"", code}, size);
-    lv_obj_set_style_margin_bottom(img, this->m_.px(2), LV_PART_MAIN);
+  const lv_font_t *f = this->font_(font);
+  const int size = this->emoji_px_(font);
+  const int space = std::max(2, static_cast<int>(lv_font_get_glyph_width(f, ' ', 0)));
+  bool new_line = false;
+  for (const auto &run : runs) {
+    lv_obj_t *piece = nullptr;
+    switch (run.kind) {
+      case TextRun::BREAK:
+        new_line = true;
+        continue;
+      case TextRun::TEXT:
+        piece = lv_label_create(row);
+        lv_label_set_text(piece, run.value.c_str());
+        lv_obj_set_style_text_font(piece, f, LV_PART_MAIN);
+        lv_obj_set_style_text_color(piece, lv_color_hex(color), LV_PART_MAIN);
+        // A word longer than the row still wraps inside itself.
+        lv_obj_set_style_max_width(piece, LV_PCT(100), LV_PART_MAIN);
+        lv_label_set_long_mode(piece, LV_LABEL_LONG_MODE_WRAP);
+        break;
+      case TextRun::EMOJI:
+        piece = this->emoji_(row, Emoji{"", run.value}, size);
+        if (run.space_after)
+          lv_obj_set_style_margin_right(piece, space, LV_PART_MAIN);
+        break;
+    }
+    if (new_line) {
+      lv_obj_add_flag(piece, LV_OBJ_FLAG_FLEX_IN_NEW_TRACK);
+      new_line = false;
+    }
   }
-  lv_obj_set_width(label, LV_PCT(100));
-  lv_obj_add_event_cb(row, fit_rich, LV_EVENT_SIZE_CHANGED, nullptr);
+  return row;
+}
+
+lv_obj_t *SocialHomeDisplay::inline_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color,
+                                     int max_width) {
+  lv_obj_t *row = this->row_(parent, 0);
+  const lv_font_t *f = this->font_(font);
+  const int size = this->emoji_px_(font);
+  const int space = std::max(2, static_cast<int>(lv_font_get_glyph_width(f, ' ', 0)));
+  int used = 0;
+  for (const auto &run : text_runs(text, false)) {
+    if (run.kind == TextRun::BREAK) {
+      // One line: a break is a space.
+      used += space;
+      if (lv_obj_get_child_count(row) > 0)
+        lv_obj_set_style_margin_right(lv_obj_get_child(row, -1), space, LV_PART_MAIN);
+      continue;
+    }
+    if (run.kind == TextRun::EMOJI) {
+      if (used + size > max_width) {
+        // No room for the picture: end with an ellipsis.
+        if (used + space < max_width)
+          this->text_(row, "\xE2\x80\xA6", font, color);
+        break;
+      }
+      lv_obj_t *img = this->emoji_(row, Emoji{"", run.value}, size);
+      used += size;
+      if (run.space_after) {
+        lv_obj_set_style_margin_right(img, space, LV_PART_MAIN);
+        used += space;
+      }
+      continue;
+    }
+    lv_point_t extent;
+    lv_text_get_size(&extent, run.value.c_str(), f, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    lv_obj_t *label = lv_label_create(row);
+    lv_label_set_text(label, run.value.c_str());
+    lv_obj_set_style_text_font(label, f, LV_PART_MAIN);
+    lv_obj_set_style_text_color(label, lv_color_hex(color), LV_PART_MAIN);
+    if (used + extent.x > max_width) {
+      // The rest is cut with "…".
+      lv_obj_set_width(label, std::max(0, max_width - used));
+      lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+      break;
+    }
+    used += extent.x;
+  }
   return row;
 }
 
@@ -442,8 +503,14 @@ void SocialHomeDisplay::build_frame_(lv_obj_t *screen) {
   lv_obj_t *root = this->row_(screen, 0);
   lv_obj_set_size(root, LV_PCT(100), LV_PCT(100));
   lv_obj_set_flex_align(root, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-  if (b.header.rail.shown)
+  if (b.header.rail.shown) {
     this->build_rail_(root);
+  } else if (this->can_lock_()) {
+    // One person, no rail: the lock button sits in the corner.
+    lv_obj_t *lock = this->build_lock_button_(screen);
+    lv_obj_add_flag(lock, LV_OBJ_FLAG_FLOATING);
+    lv_obj_align(lock, LV_ALIGN_BOTTOM_RIGHT, -this->m_.px(16), -this->m_.px(16));
+  }
   lv_obj_t *main = this->column_(root, this->m_.px(18));
   lv_obj_set_flex_grow(main, 1);
   lv_obj_set_height(main, LV_PCT(100));
@@ -560,6 +627,13 @@ void SocialHomeDisplay::build_rail_(lv_obj_t *parent) {
     lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_long_mode(name, LV_LABEL_LONG_MODE_DOTS);
   }
+  if (this->can_lock_()) {
+    // At the bottom of the rail (pushed down while the people fit).
+    lv_obj_t *spacer = this->box_(rail);
+    lv_obj_set_flex_grow(spacer, 1);
+    lv_obj_t *lock = this->build_lock_button_(rail);
+    lv_obj_set_style_margin_top(lock, this->m_.px(8), LV_PART_MAIN);
+  }
 }
 
 void SocialHomeDisplay::build_tabs_(lv_obj_t *parent) {
@@ -612,10 +686,39 @@ void SocialHomeDisplay::on_ack_(lv_event_t *event) {
   auto *self = static_cast<SocialHomeDisplay *>(lv_obj_get_user_data(target));
   if (self == nullptr || key == nullptr)
     return;
-  // The server's acknowledge endpoint comes with a later Social Home
-  // release; until then "Got it" hides the banner on this panel only.
-  self->dismissed_.insert(*key);
-  self->dirty_ = true;
+  std::string copy = *key;  // the rebuild frees the payload
+  self->request_ack_(copy);
+}
+
+bool SocialHomeDisplay::can_lock_() const {
+  return this->mode_ == Mode::RUNNING && this->board_ != nullptr && this->board_->header.settings.pin_set &&
+         !this->lock_refused_;
+}
+
+void SocialHomeDisplay::on_lock_(lv_event_t *event) {
+  auto *self = static_cast<SocialHomeDisplay *>(lv_event_get_user_data(event));
+  if (self != nullptr)
+    self->request_lock_();
+}
+
+lv_obj_t *SocialHomeDisplay::build_lock_button_(lv_obj_t *parent) {
+  // As on the tablet: a round 🔒 button, only while the household has a PIN.
+  const Palette &p = this->palette_();
+  lv_obj_t *button = this->box_(parent);
+  const int d = this->m_.px(64);
+  lv_obj_set_size(button, d, d);
+  lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(button, lv_color_hex(p.bg), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(button, lv_color_hex(p.border), LV_STATE_PRESSED);
+  lv_obj_set_style_border_color(button, lv_color_hex(p.border), LV_PART_MAIN);
+  lv_obj_set_style_border_width(button, 1, LV_PART_MAIN);
+  lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(button, this->m_.px(8));
+  lv_obj_add_event_cb(button, SocialHomeDisplay::on_lock_, LV_EVENT_CLICKED, this);
+  lv_obj_t *icon = this->emoji_(button, Emoji{"\xF0\x9F\x94\x92", "1f512"}, this->m_.px(30));
+  lv_obj_center(icon);
+  return button;
 }
 
 void SocialHomeDisplay::build_alerts_(lv_obj_t *parent, const std::vector<Mention> &alerts) {

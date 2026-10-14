@@ -40,9 +40,56 @@ std::string strip_emoji(const std::string &text);
 /// order, at most `max` — drawn as pictures next to the stripped text.
 std::vector<std::string> emoji_codes(const std::string &text, size_t max);
 
+/// One piece of a text laid out with its emoji in place.
+struct TextRun {
+  enum Kind : uint8_t {
+    TEXT,   ///< words (no emoji), drawn with the font
+    EMOJI,  ///< one emoji as its Twemoji code, drawn as a picture
+    BREAK,  ///< a line break in the text
+  };
+  Kind kind{TEXT};
+  std::string value;
+  /// EMOJI only: a space followed it (the gap is drawn, not typed).
+  bool space_after{false};
+
+  bool operator==(const TextRun &other) const {
+    return kind == other.kind && value == other.value && space_after == other.space_after;
+  }
+};
+
+/// Split `text` into text and emoji runs in reading order, so the emoji stay
+/// where they were typed ("Shoes on! 👟" → "Shoes on! ", 👟). Spaces are
+/// collapsed as in strip_emoji(). With `words`, every TEXT run ends after
+/// its space ("Shoes ", "on! "), so a wrapping row can break between words.
+/// At most `max_emoji` emoji are kept; the rest are dropped.
+std::vector<TextRun> text_runs(const std::string &text, bool words, size_t max_emoji = 16);
+
 /// The firmware's image sizes the server offers (avatars / emoji).
 int pick_avatar_size(int px);
 int pick_emoji_size(int px);
+
+/// When to (re)load the map picture (GET /map.png). Pure bookkeeping: the
+/// caller does the request and reports how it went.
+struct MapFetch {
+  std::string held_path;   ///< path (with ?w=&h=&scheme=) of the picture held
+  std::string held_etag;   ///< its ETag, sent back as If-None-Match
+  std::string seen_board;  ///< the board's image.etag when it was last checked
+  uint32_t retry_at{0};    ///< millis: no new attempt before this
+  bool waiting{false};     ///< retry_at is set
+
+  /// True when `path` should be requested now: another picture than the one
+  /// held, or the board says the map changed — unless a retry is pending.
+  bool due(const std::string &path, const std::string &board_etag, uint32_t now) const;
+  /// The If-None-Match to send for `path` (empty: nothing to revalidate).
+  std::string if_none_match(const std::string &path) const;
+  /// 200: `path` is now held with `etag`.
+  void loaded(const std::string &path, const std::string &etag, const std::string &board_etag);
+  /// 304: the held picture is still current.
+  void unchanged(const std::string &board_etag);
+  /// No picture (503, 429, network): try again after `seconds`.
+  void failed(uint32_t now, uint32_t seconds);
+  void reset() { *this = MapFetch{}; }
+};
 
 /// Geometry of the 1280×800 browser dashboard, scaled to any panel.
 ///
@@ -70,6 +117,9 @@ struct Metrics {
   int emoji_md() const { return px(32); }
   int emoji_lg() const { return px(72); }
   int tab_height() const { return px(64); }
+  /// The Map tab's picture area (the browser's map frame) and its list.
+  int map_list_width() const { return px(336); }
+  int map_height() const { return px(560); }
   int tap_min() const { return px(48); }
 
   /// Columns of at least `min_col` design px that fit in `avail` px.

@@ -5,6 +5,7 @@
 // the clock, idle return, night dimming and the backlight timeout.
 #include "socialhome_display.h"
 
+#include <algorithm>
 #include <cstring>
 
 #include "esphome/core/hal.h"
@@ -74,6 +75,7 @@ const std::string &SocialHomeDisplay::str_(const char *key) const {
       {"nav_home", "Home"},
       {"map_title", "Who's where"},
       {"map_placeholder", "The map comes with a Social Home update."},
+      {"map_none", "No map picture on this Social Home \xE2\x80\x94 the list shows who's where."},
       {"settings_title", "Panel settings"},
       {"settings_server", "Social Home"},
       {"settings_panel", "Panel"},
@@ -85,12 +87,16 @@ const std::string &SocialHomeDisplay::str_(const char *key) const {
       {"credits",
        "Emoji: Twemoji \xC2\xA9 Twitter, Inc and other contributors, \xC2\xA9 jdecked and other contributors, "
        "CC-BY 4.0. Font: Roboto, Apache 2.0. Firmware: MPL-2.0, built on ESPHome (GPLv3) and LVGL (MIT)."},
-      {"unlock_on_server", "Unlock this panel in Social Home: Admin \xE2\x80\xBA Dashboard \xE2\x80\xBA Wall panels."},
       {"locked", "Screen locked"},
       {"enter_pin", "Enter PIN"},
       {"unlock", "Unlock"},
       {"pin_button", "PIN"},
       {"wrong_pin", "Wrong PIN"},
+      // Not in the v1 theme strings yet: the panel's English.
+      {"pin_remaining", "{n} tries left"},
+      {"pin_wait", "Too many tries. Try again in {n} s."},
+      {"pin_offline", "Can't reach Social Home. Try again."},
+      {"lock", "Lock screen"},
       {"night_wake", "Tap to show the dashboard"},
   };
   static const std::string EMPTY;
@@ -118,6 +124,7 @@ void SocialHomeDisplay::setup() {
       global_preferences->make_preference<StoredText>(fnv1_hash("socialhome_display.display_id"), true);
   this->load_state_();
   this->images_.set_factory([this](const std::string &path) { return this->request_(path); });
+  this->map_.set_factory([this](const std::string &path) { return this->request_(path); });
   this->set_mode_(Mode::BOOT);
 }
 
@@ -178,6 +185,7 @@ void SocialHomeDisplay::forget_server() {
   this->theme_etag_.clear();
   this->pairing_ = PairStart{};
   this->clear_images_ = true;
+  this->lock_refused_ = false;
   this->set_mode_(Mode::NO_SERVER);
 }
 
@@ -197,6 +205,8 @@ void SocialHomeDisplay::set_mode_(Mode mode) {
   this->dirty_ = true;
   this->pin_.clear();
   this->pin_open_ = false;
+  this->pin_message_.clear();
+  this->pin_error_ = false;
   switch (mode) {
     case Mode::PAIRING:
       this->pairing_ = PairStart{};
@@ -248,6 +258,8 @@ void SocialHomeDisplay::loop() {
   while (this->api_.poll(response))
     this->handle_api_(response);
   this->images_.loop();
+  if (this->map_.loop() && this->board_ != nullptr && this->board_->kind == BoardKind::MAP)
+    this->dirty_ = true;
 
   if (this->mode_ == Mode::PAIRING && this->pair_request_ == 0 && now >= this->next_pair_poll_) {
     if (this->pairing_.pair_id.empty() || (this->pair_expires_ != 0 && now > this->pair_expires_)) {
@@ -266,6 +278,7 @@ void SocialHomeDisplay::loop() {
     if (this->mode_ == Mode::RUNNING && this->theme_request_ == 0 && now >= this->next_theme_)
       this->request_theme_();
   }
+  this->tick_map_();
 
   this->tick_idle_();
   this->apply_backlight_();
@@ -358,13 +371,230 @@ void SocialHomeDisplay::request_theme_() {
 }
 
 void SocialHomeDisplay::handle_api_(HttpResponse &response) {
-  if (response.id == this->pair_request_ && this->pair_request_ != 0) {
+  if (response.id == 0)
+    return;
+  if (response.id == this->pair_request_) {
     this->handle_pairing_(response);
-  } else if (response.id == this->board_request_ && this->board_request_ != 0) {
+  } else if (response.id == this->board_request_) {
     this->handle_board_(response);
-  } else if (response.id == this->theme_request_ && this->theme_request_ != 0) {
+  } else if (response.id == this->theme_request_) {
     this->handle_theme_(response);
+  } else if (response.id == this->lock_request_) {
+    this->handle_lock_(response);
+  } else if (response.id == this->unlock_request_) {
+    this->handle_unlock_(response);
+  } else {
+    auto ack = this->ack_requests_.find(response.id);
+    if (ack != this->ack_requests_.end()) {
+      std::string key = ack->second;
+      this->ack_requests_.erase(ack);
+      this->handle_ack_(response, key);
+    }
   }
+}
+
+void SocialHomeDisplay::unpair_() {
+  ESP_LOGW(TAG, "The server doesn't know this panel any more; pairing again");
+  this->token_.clear();
+  this->display_id_.clear();
+  this->save_state_();
+  this->board_.reset();
+  this->etags_.clear();
+  this->clear_images_ = true;
+  this->set_mode_(Mode::PAIRING);
+  this->pair_note_ = this->str_("unpaired");
+}
+
+// ---- lock, unlock, "Got it" ------------------------------------------------
+
+namespace {
+std::string with_n(std::string text, uint32_t n) {
+  size_t at = text.find("{n}");
+  if (at != std::string::npos)
+    text.replace(at, 3, std::to_string(n));
+  return text;
+}
+}  // namespace
+
+void SocialHomeDisplay::request_lock_() {
+  if (this->lock_request_ != 0)
+    return;
+  HttpRequest request = this->request_(std::string(API) + "/lock");
+  request.method = "POST";
+  request.id = this->lock_request_ = this->next_id_++;
+  if (!this->api_.submit(std::move(request)))
+    this->lock_request_ = 0;
+}
+
+void SocialHomeDisplay::handle_lock_(HttpResponse &response) {
+  this->lock_request_ = 0;
+  switch (response.status) {
+    case 200:
+    case 423: {
+      LockScreen lock;
+      ParseResult r = parse_lock(response.body.data(), response.body.size(), lock);
+      if (r == ParseResult::WRONG_VERSION) {
+        this->set_mode_(Mode::UPDATE_NEEDED);
+      } else if (r == ParseResult::OK) {
+        ESP_LOGI(TAG, "Locked");
+        this->close_settings_();
+        this->lock_ = std::move(lock);
+        this->current_path_ = HOME_PATH;
+        this->set_mode_(Mode::LOCKED);
+      }
+      return;
+    }
+    case 401:
+      this->unpair_();
+      return;
+    case 409:
+      // DASHBOARD_PIN_REQUIRED: the PIN was removed; hide the button.
+      ESP_LOGW(TAG, "Can't lock: the household has no PIN");
+      this->lock_refused_ = true;
+      this->dirty_ = true;
+      return;
+    default:
+      ESP_LOGW(TAG, "Lock: status %d %s", response.status, response.error.c_str());
+      return;
+  }
+}
+
+void SocialHomeDisplay::request_unlock_() {
+  const uint32_t now = millis();
+  if (this->pin_.empty() || this->unlock_request_ != 0)
+    return;
+  if (this->pin_wait_until_ != 0 && static_cast<int32_t>(now - this->pin_wait_until_) < 0)
+    return;
+  this->pin_wait_until_ = 0;
+  HttpRequest request = this->request_(std::string(API) + "/unlock");
+  request.method = "POST";
+  request.headers.emplace_back("Content-Type", "application/json");
+  request.body = unlock_body(this->pin_);
+  request.id = this->unlock_request_ = this->next_id_++;
+  this->pin_.clear();
+  if (!this->api_.submit(std::move(request)))
+    this->unlock_request_ = 0;
+}
+
+void SocialHomeDisplay::handle_unlock_(HttpResponse &response) {
+  this->unlock_request_ = 0;
+  if (this->mode_ != Mode::LOCKED)
+    return;
+  const uint32_t now = millis();
+  const ApiError error = parse_error(response.body.data(), response.body.size());
+  switch (response.status) {
+    case 200:
+      if (parse_unlocked(response.body.data(), response.body.size()) == ParseResult::OK) {
+        ESP_LOGI(TAG, "Unlocked");
+        this->set_mode_(Mode::RUNNING);
+        return;
+      }
+      this->pin_message_ = this->str_("pin_offline");
+      break;
+    case 400:
+    case 403: {
+      // DISPLAY_PIN_WRONG: say so, with the tries left before the next
+      // wrong PIN unpairs the panel.
+      std::string text = this->lock_.wrong_pin.empty() ? this->str_("wrong_pin") : this->lock_.wrong_pin;
+      if (error.remaining >= 0)
+        text += " \xC2\xB7 " + with_n(this->str_("pin_remaining"), static_cast<uint32_t>(error.remaining));
+      this->pin_message_ = text;
+      break;
+    }
+    case 401:
+      // DISPLAY_SIGNED_OUT after too many wrong PINs.
+      this->unpair_();
+      return;
+    case 429: {
+      uint32_t wait = parse_retry_after(response.retry_after, error.retry_after > 0 ? error.retry_after : 30);
+      this->pin_wait_until_ = now + wait * 1000;
+      this->pin_message_ = with_n(this->str_("pin_wait"), wait);
+      break;
+    }
+    default:
+      ESP_LOGW(TAG, "Unlock: status %d %s", response.status, response.error.c_str());
+      this->pin_message_ = this->str_("pin_offline");
+      break;
+  }
+  this->pin_error_ = true;
+  this->dirty_ = true;
+}
+
+const Mention *SocialHomeDisplay::find_mention_(const std::string &key) const {
+  if (this->board_ == nullptr)
+    return nullptr;
+  for (const auto &m : this->board_->header.alerts)
+    if (m.key == key)
+      return &m;
+  for (const auto &m : this->board_->mentions)
+    if (m.key == key)
+      return &m;
+  return nullptr;
+}
+
+void SocialHomeDisplay::request_ack_(const std::string &key) {
+  // Hidden at once; shown again if the server can't take it.
+  this->dismissed_.insert(key);
+  this->dirty_ = true;
+  const Mention *mention = this->find_mention_(key);
+  if (mention == nullptr || !mention->ack.has_value())
+    return;
+  for (const auto &kv : this->ack_requests_)
+    if (kv.second == key)
+      return;
+  HttpRequest request = this->request_(std::string(API) + "/ack");
+  request.method = "POST";
+  request.headers.emplace_back("Content-Type", "application/json");
+  request.body = ack_body(*mention->ack);
+  request.id = this->next_id_++;
+  uint32_t id = request.id;
+  if (this->api_.submit(std::move(request))) {
+    this->ack_requests_[id] = key;
+  } else {
+    this->dismissed_.erase(key);
+  }
+}
+
+void SocialHomeDisplay::handle_ack_(HttpResponse &response, const std::string &key) {
+  switch (response.status) {
+    case 200:
+      // Acknowledged: the next board no longer carries it.
+      this->next_poll_ = millis();
+      return;
+    case 404:
+      // The wall no longer shows that mention: refresh, keep it hidden.
+      this->next_poll_ = millis();
+      return;
+    case 401:
+      this->unpair_();
+      return;
+    default:
+      ESP_LOGW(TAG, "Got it: status %d %s; showing the message again", response.status, response.error.c_str());
+      this->dismissed_.erase(key);
+      this->dirty_ = true;
+      return;
+  }
+}
+
+// ---- map picture -------------------------------------------------------------
+
+std::string SocialHomeDisplay::map_path_() const {
+  const MapImage &image = *this->board_->map.image;
+  const bool rail = this->board_->header.rail.shown;
+  const int main = this->m_.width - (rail ? this->m_.rail_width() : 0) - 2 * this->m_.pad();
+  const int w = std::clamp(main - this->m_.map_list_width() - this->m_.gap(), 200, 1920);
+  const int h = std::clamp(this->m_.map_height(), 200, 1200);
+  return image.url + "?w=" + std::to_string(w) + "&h=" + std::to_string(h) +
+         "&scheme=" + (this->theme_.mode == "dark" ? "dark" : "light");
+}
+
+void SocialHomeDisplay::tick_map_() {
+  if (this->mode_ != Mode::RUNNING || this->board_ == nullptr || this->board_->kind != BoardKind::MAP ||
+      !this->board_->map.image.has_value() || this->board_path_ != this->current_path_)
+    return;
+  const MapImage &image = *this->board_->map.image;
+  // The server clamps w/h too; a bigger picture than asked is refused.
+  this->map_.want(this->map_path_(), image.etag, 1920, 1200, this->palette_().bg);
 }
 
 void SocialHomeDisplay::handle_theme_(HttpResponse &response) {
@@ -406,8 +636,10 @@ void SocialHomeDisplay::handle_board_(HttpResponse &response) {
         ESP_LOGW(TAG, "%s: %s", this->current_path_.c_str(), parse_result_str(r));
         return;
       }
-      if (this->board_ != nullptr && this->board_->header.view_key != board->header.view_key)
-        this->next_theme_ = 0;  // the theme colour may have changed
+      if (this->board_ != nullptr && this->board_->header.view_key != board->header.view_key) {
+        this->next_theme_ = 0;      // the theme colour may have changed
+        this->lock_refused_ = false;  // … and the PIN setting
+      }
       this->board_ = std::move(board);
       this->board_path_ = this->current_path_;
       this->etags_[this->current_path_] = response.etag;
@@ -432,15 +664,7 @@ void SocialHomeDisplay::handle_board_(HttpResponse &response) {
       }
       return;
     case 401:
-      ESP_LOGW(TAG, "The server doesn't know this panel any more; pairing again");
-      this->token_.clear();
-      this->display_id_.clear();
-      this->save_state_();
-      this->board_.reset();
-      this->etags_.clear();
-      this->clear_images_ = true;
-      this->set_mode_(Mode::PAIRING);
-      this->pair_note_ = this->str_("unpaired");
+      this->unpair_();
       return;
     case 404:
     case 409: {
@@ -496,7 +720,10 @@ void SocialHomeDisplay::navigate_(const std::string &path) {
   }
   ESP_LOGD(TAG, "Show %s", path.c_str());
   this->current_path_ = path;
-  this->api_.cancel_if([](const HttpRequest &) { return true; });
+  // Drop a queued board / theme poll; a lock, unlock or "Got it" still goes.
+  this->api_.cancel_if([this](const HttpRequest &r) {
+    return r.id == this->board_request_ || r.id == this->theme_request_;
+  });
   this->board_request_ = 0;
   this->theme_request_ = 0;
   this->request_board_();
@@ -617,6 +844,7 @@ void SocialHomeDisplay::render_() {
   if (this->clear_images_) {
     // Only now: nothing on screen points at the cached pictures any more.
     this->images_.clear();
+    this->map_.clear();
     this->clear_images_ = false;
   }
 

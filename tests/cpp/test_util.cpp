@@ -130,3 +130,109 @@ TEST(emoji_text) {
   CHECK_EQ(emoji_codes("\xF0\x9F\x8D\xB0\xF0\x9F\x8D\xB0\xF0\x9F\x8D\xB0", 2).size(), size_t{2});
   CHECK_EQ(emoji_codes("no emoji", 3).size(), size_t{0});
 }
+
+namespace {
+/// Runs as "T(Shoes )E(1f45f_)B" — `_` marks an emoji followed by a space.
+std::string runs(const std::string &text, bool words, size_t max_emoji = 16) {
+  std::string out;
+  for (const auto &run : text_runs(text, words, max_emoji)) {
+    switch (run.kind) {
+      case TextRun::TEXT:
+        out += "T(" + run.value + ")";
+        break;
+      case TextRun::EMOJI:
+        out += "E(" + run.value + (run.space_after ? "_" : "") + ")";
+        break;
+      case TextRun::BREAK:
+        out += "B";
+        break;
+    }
+  }
+  return out;
+}
+}  // namespace
+
+TEST(text_runs_keep_emoji_in_place) {
+  // A trailing emoji is kept (tile captions dropped it).
+  CHECK_EQ(runs("@leo Shoes on! \xF0\x9F\x91\x9F", false), std::string("T(@leo Shoes on! )E(1f45f)"));
+  // Inline emoji stay between their words.
+  CHECK_EQ(runs("Cake \xF0\x9F\x8D\xB0 for Gran", false), std::string("T(Cake )E(1f370_)T(for Gran)"));
+  CHECK_EQ(runs("\xF0\x9F\x8E\xA4 Can I go?", false), std::string("E(1f3a4_)T(Can I go?)"));
+  CHECK_EQ(runs("no emoji here", false), std::string("T(no emoji here)"));
+  CHECK_EQ(runs("", false), std::string(""));
+  CHECK_EQ(runs("\xF0\x9F\x8E\x82\xF0\x9F\x8E\x89", false), std::string("E(1f382)E(1f389)"));
+  // Text glued to an emoji keeps no gap.
+  CHECK_EQ(runs("go\xF0\x9F\x8F\x83now", false), std::string("T(go)E(1f3c3)T(now)"));
+}
+
+TEST(text_runs_words_split_for_wrapping) {
+  CHECK_EQ(runs("@leo Shoes on! \xF0\x9F\x91\x9F", true), std::string("T(@leo )T(Shoes )T(on! )E(1f45f)"));
+  CHECK_EQ(runs("Cake \xF0\x9F\x8D\xB0 for Gran", true), std::string("T(Cake )E(1f370_)T(for )T(Gran)"));
+  CHECK_EQ(runs("one", true), std::string("T(one)"));
+}
+
+TEST(text_runs_spaces_and_breaks) {
+  // Spaces collapse, none lead or trail.
+  CHECK_EQ(runs("  a   b  ", false), std::string("T(a b)"));
+  CHECK_EQ(runs("\xF0\x9F\x8D\xB0   x", false), std::string("E(1f370_)T(x)"));
+  CHECK_EQ(runs("x \xF0\x9F\x8D\xB0 ", false), std::string("T(x )E(1f370)"));
+  // Line breaks survive (once), not at the edges.
+  CHECK_EQ(runs("\nfirst \n\n second\n", false), std::string("T(first)BT(second)"));
+  CHECK_EQ(runs("a\r\nb", false), std::string("T(a)BT(b)"));
+  // Variation selectors and stray joiners vanish.
+  CHECK_EQ(runs("\xE2\x98\x80\xEF\xB8\x8F Sunny", false), std::string("E(2600_)T(Sunny)"));
+  CHECK_EQ(runs("a\xE2\x80\x8D" "b", false), std::string("T(ab)"));
+}
+
+TEST(text_runs_sequences) {
+  // ZWJ family, skin tone and a flag are one picture each.
+  CHECK_EQ(runs("\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x8D\xB3 cooks", false), std::string("E(1f468-200d-1f373_)T(cooks)"));
+  CHECK_EQ(runs("\xF0\x9F\x91\x8D\xF0\x9F\x8F\xBD", false), std::string("E(1f44d-1f3fd)"));
+  CHECK_EQ(runs("\xF0\x9F\x87\xAC\xF0\x9F\x87\xA7\xF0\x9F\x87\xA8\xF0\x9F\x87\xAD", false),
+           std::string("E(1f1ec-1f1e7)E(1f1e8-1f1ed)"));
+  // Non-emoji symbols stay text; bad UTF-8 doesn't crash.
+  CHECK_EQ(runs("Gr\xC3\xBC\xC3\x9F \xE2\x80\xBA ok", false), std::string("T(Gr\xC3\xBC\xC3\x9F \xE2\x80\xBA ok)"));
+  CHECK_EQ(runs("a\xFF" "b", false), std::string("T(a\xFF" "b)"));
+}
+
+TEST(text_runs_emoji_limit) {
+  CHECK_EQ(runs("\xF0\x9F\x8D\xB0 \xF0\x9F\x8D\xB0 \xF0\x9F\x8D\xB0 end", false, 2),
+           std::string("E(1f370_)E(1f370_)T(end)"));
+  // The text left is the same as strip_emoji's.
+  std::string mixed = "Leaving \xF0\x9F\x9A\x97 work  now \xF0\x9F\x8D\xB0";
+  std::string joined;
+  for (const auto &run : text_runs(mixed, false))
+    if (run.kind == TextRun::TEXT)
+      joined += run.value;
+  CHECK_EQ(joined, std::string("Leaving work now "));
+  CHECK_EQ(strip_emoji(mixed), std::string("Leaving work now"));
+}
+
+TEST(map_fetch_policy) {
+  MapFetch f;
+  const std::string light = "/api/display/v1/map.png?w=748&h=560&scheme=light";
+  const std::string dark = "/api/display/v1/map.png?w=748&h=560&scheme=dark";
+  // Nothing held: fetch, nothing to revalidate.
+  CHECK(f.due(light, "\"a\"", 0));
+  CHECK_EQ(f.if_none_match(light), std::string(""));
+  f.loaded(light, "\"p1\"", "\"a\"");
+  // Same picture, same board ETag: no request at all.
+  CHECK(!f.due(light, "\"a\"", 1000));
+  // The board says the map changed: revalidate with the held ETag.
+  CHECK(f.due(light, "\"b\"", 1000));
+  CHECK_EQ(f.if_none_match(light), std::string("\"p1\""));
+  f.unchanged("\"b\"");
+  CHECK(!f.due(light, "\"b\"", 2000));
+  // Another scheme is another picture: fetch, nothing to revalidate.
+  CHECK(f.due(dark, "\"b\"", 2000));
+  CHECK_EQ(f.if_none_match(dark), std::string(""));
+  // 503 / 429: wait Retry-After, then try again even without a new ETag.
+  f.failed(2000, 60);
+  CHECK(!f.due(dark, "\"b\"", 30000));
+  CHECK(!f.due(dark, "\"c\"", 61999));
+  CHECK(f.due(dark, "\"b\"", 62000));
+  f.loaded(dark, "\"p2\"", "\"b\"");
+  CHECK(!f.due(dark, "\"b\"", 70000));
+  f.reset();
+  CHECK(f.due(dark, "\"b\"", 70000));
+}

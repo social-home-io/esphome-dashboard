@@ -18,20 +18,9 @@
 #include <utility>
 #include <vector>
 
+#include "png.h"
+
 namespace esphome::socialhome_display {
-
-/// A decoded picture: ARGB8888 (B, G, R, A bytes), ready for LVGL.
-struct Pixels {
-  int width{0};
-  int height{0};
-  uint8_t *data{nullptr};  ///< PSRAM when available; owned
-  size_t size{0};
-
-  Pixels() = default;
-  Pixels(const Pixels &) = delete;
-  Pixels &operator=(const Pixels &) = delete;
-  ~Pixels();
-};
 
 struct HttpRequest {
   uint32_t id{0};
@@ -43,6 +32,12 @@ struct HttpRequest {
   int decode_size{0};
   /// Make the decoded picture round (avatars).
   bool round{false};
+  /// Decode a PNG answer at its own size into RGB565 (the map), streamed
+  /// straight from the network; bigger than this is refused.
+  int stream_width{0};
+  int stream_height{0};
+  /// Colour transparent map pixels are blended onto (0xRRGGBB).
+  uint32_t background{0xFFFFFF};
 };
 
 struct HttpResponse {
@@ -55,13 +50,12 @@ struct HttpResponse {
   std::shared_ptr<Pixels> pixels;
 };
 
-/// Decode a PNG into ARGB8888 at `size`×`size` (box-filtered, aspect kept,
-/// centred), optionally masked to a circle. nullptr when it is no PNG.
-std::shared_ptr<Pixels> decode_png(const uint8_t *data, size_t len, int size, bool round);
-
 class HttpWorker {
  public:
-  explicit HttpWorker(const char *name, size_t max_queue) : name_(name), max_queue_(max_queue) {}
+  /// `priority`: FreeRTOS priority of the worker thread (ESP32). A worker
+  /// that decodes big pictures runs at the main loop's so it can't starve it.
+  explicit HttpWorker(const char *name, size_t max_queue, int priority = 5)
+      : name_(name), max_queue_(max_queue), priority_(priority) {}
   ~HttpWorker();
 
   /// Starts the thread on first use.
@@ -80,6 +74,7 @@ class HttpWorker {
 
   const char *name_;
   size_t max_queue_;
+  int priority_;
   std::mutex lock_;
   std::condition_variable wake_;
   std::deque<HttpRequest> queue_;
