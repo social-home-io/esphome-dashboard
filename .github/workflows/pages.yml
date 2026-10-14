@@ -1,0 +1,68 @@
+name: Pages
+
+# Deploys the web installer and the update manifests panels poll
+# (https://social-home-io.github.io/esphome-dashboard/firmware/<slug>/manifest.json).
+#
+# Pages keeps ONE site per repository and every deploy replaces all of it, so
+# every deploy is built the same way (scripts/build_site.py): docs/ from main
+# plus the firmware of the latest published, non-pre-release release. A merge
+# to main therefore updates the page without touching the firmware, and a
+# release (release.yml calls this workflow after attaching its images)
+# deploys exactly what the next merge would.
+#
+#  * push to main — every merge.
+#  * workflow_call — release.yml, after the images are attached. Not called
+#    for a pre-release: `releases/latest` skips those anyway, so a
+#    pre-release never changes the manifests on the wall.
+#  * workflow_dispatch — redeploy by hand.
+on:
+  push:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and deploy the installer site
+    runs-on: ubuntu-latest
+    # A merge and a release must not race each other's deploy; neither is
+    # cancelled half-way. A queued run is superseded by a newer one, which
+    # deploys the same thing or newer.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      # The installer page always comes from main, also when a release calls
+      # this workflow from its tag.
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Fetch the latest stable release's firmware
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/build_site.py fetch --repo "${GITHUB_REPOSITORY}" --dest release
+      - name: Assemble site
+        id: site
+        run: |
+          python3 scripts/build_site.py assemble --release-dir release --out site \
+            --github-output "${GITHUB_OUTPUT}"
+          if [ -d site ]; then find site -type f -not -path 'site/screenshots/*' | sort; fi
+      - if: steps.site.outputs.deploy == 'true'
+        uses: actions/configure-pages@v6
+      - if: steps.site.outputs.deploy == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - if: steps.site.outputs.deploy == 'true'
+        id: deploy
+        uses: actions/deploy-pages@v5

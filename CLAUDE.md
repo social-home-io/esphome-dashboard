@@ -56,3 +56,8 @@ behave the same. Its own `CLAUDE.md` carries the mirror of this rule.
   and friends are the pattern); CI runs them with the device compile.
 - Releases are CalVer tags `YYYY.M.D[.N]`; a pre-release never replaces the
   update manifest panels poll.
+- GitHub Pages (installer + the OTA manifests panels poll) deploys on every
+  merge to `main` and on every release, both through `.github/workflows/pages.yml`
+  and `scripts/build_site.py`: `docs/` from `main` plus the latest stable
+  release's firmware. Each deploy replaces the whole site, so never deploy
+  Pages any other way — a bare `docs/` deploy deletes the manifests.

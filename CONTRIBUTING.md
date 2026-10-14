@@ -30,6 +30,10 @@ for screenshots.
   (`.claude/skills/panel-screenshots/SKILL.md`).
 - `python3 scripts/screenshots/check.py /tmp/shots` — what the Panel UI CI
   job asserts about that run.
+- `python3 scripts/build_site.py fetch --repo social-home-io/esphome-dashboard --dest /tmp/rel`
+  then `python3 scripts/build_site.py assemble --release-dir /tmp/rel --out /tmp/site`
+  and `python3 -m http.server -d /tmp/site` — the installer site exactly as
+  Pages deploys it (`docs/` changes go live on merge to `main`).
 
 USB isn't passed into the container (it depends on your OS): flash with
 the [web installer](https://social-home-io.github.io/esphome-dashboard/) or
