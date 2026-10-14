@@ -25,6 +25,9 @@ for screenshots.
 - `.venv/bin/esphome compile builds/guition-jc8012p4a1.factory.yaml` — the
   panel firmware.
 - `cmake --build build/tests && ctest --test-dir build/tests` — host tests.
+- `.venv/bin/python scripts/screenshots/run.py --socialhome ../socialhome --out /tmp/shots`
+  — the panel next to the browser dashboard, every screen, for the PR
+  (`.claude/skills/panel-screenshots/SKILL.md`).
 
 USB isn't passed into the container (it depends on your OS): flash with
 the [web installer](https://social-home-io.github.io/esphome-dashboard/) or

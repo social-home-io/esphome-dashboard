@@ -23,6 +23,8 @@ echo 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox --disable-dev-shm-usag
 eval "$(grep -E '^[A-Z_]+=' .github/esphome.env)"
 
 uv venv .venv --seed
+# ESPHome brings Pillow, which scripts/screenshots (panel vs browser shots)
+# needs too; run it with .venv/bin/python.
 uv pip install --refresh "esphome==${ESPHOME_VERSION}" yamllint
 
 # Host C++ tests: configure once; `cmake --build build/tests && ctest

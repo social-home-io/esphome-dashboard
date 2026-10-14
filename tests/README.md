@@ -1,6 +1,8 @@
 # Tests
 
-- `scripts/` — unit tests for the CI helper scripts
+- `scripts/` — unit tests for the CI helper scripts and the pure parts of
+  the screenshot tooling (`scripts/screenshots/`: file names, panel-dump vs
+  browser box offsets, run-to-run diff maths)
   (`python -m unittest discover -s tests -t .`).
 - `cpp/` — host C++ tests for the dashboard component: the JSON parser against
   every pinned Social Home fixture (the Connect from Home Assistant claim
@@ -34,3 +36,9 @@
   `dump NAME` writes `NAME.txt` next to the snapshots: every visible object's
   box (x y w h) and label text, to line the layout up with the browser's
   `getBoundingClientRect()`.
+- Panel vs browser screenshots — `scripts/screenshots/run.py` does all of
+  the above in one command: a scratch Social Home with the demo family, the
+  host panel built, paired and driven through every screen next to the
+  browser dashboard in headless Chromium, compare images, `dump` vs
+  `getBoundingClientRect()` offsets, and `diff.py` between two runs. How to
+  run and read it: `.claude/skills/panel-screenshots/SKILL.md`.
