@@ -1,0 +1,130 @@
+name: Release — draft
+
+# Keeps exactly one draft release that reflects what has merged since the
+# last published release, named after the next CalVer tag. Same contract as
+# Social Home core's release-draft.yml.
+#
+#  * push to main — every merge refreshes the draft for today's date. Each
+#    run deletes EVERY open draft (a draft is by contract the auto-generated
+#    view; a hand-polished one should have been published) and recreates
+#    today's, so the notes always match the merged set and no stale draft
+#    from an unpublished day piles up. No tag exists until someone clicks
+#    **Publish release**, so refreshing costs nothing.
+#  * workflow_dispatch — same, with an optional `date` to back-date a draft.
+#
+# Publishing the draft creates the CalVer tag and fires `release.published`,
+# the single trigger for release.yml (build every panel, attach the images,
+# deploy the web installer + update manifests to Pages). Ticking
+# "Set as a pre-release" when publishing keeps the update manifest
+# untouched, so panels on the wall are not offered it.
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Release date (YYYY-MM-DD). Defaults to today UTC."
+        required: false
+        type: string
+  push:
+    branches: [main]
+
+# Merges seconds apart would race two runs for the same version; the
+# latest run wins.
+concurrency:
+  group: release-draft-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write  # creating a draft release needs write
+
+jobs:
+  draft:
+    name: Refresh the draft release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Compute next CalVer tag
+        id: ver
+        env:
+          INPUT_DATE: ${{ inputs.date }}
+        run: |
+          set -euo pipefail
+          d="${INPUT_DATE:-$(date -u +%Y-%m-%d)}"
+          y=$(date -d "$d" +%Y)
+          m=$(date -d "$d" +%-m)   # no leading zeros: 2026.10.4, not 2026.10.04
+          day=$(date -d "$d" +%-d)
+          base="${y}.${m}.${day}"
+          existing=$(git tag -l "${base}" "${base}.*" | sort -V || true)
+          if [ -z "$existing" ]; then
+            version="$base"
+          else
+            highest=$(echo "$existing" | tail -n 1)
+            if [ "$highest" = "$base" ]; then
+              version="${base}.1"
+            else
+              n="${highest##*.}"
+              version="${base}.$((n + 1))"
+            fi
+          fi
+          # release.yml only accepts this shape; fail here rather than at publish.
+          if [[ ! "$version" =~ ^[0-9]{4}\.[1-9][0-9]?\.[1-9][0-9]?(\.[0-9]+)?$ ]]; then
+            echo "::error::Computed tag '$version' is not CalVer YYYY.M.D[.N]"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Computed version: \`$version\`"
+            echo
+            echo "### Existing same-day tags"
+            if [ -z "$existing" ]; then
+              echo "_(none — first release of the day)_"
+            else
+              echo '```'
+              echo "$existing"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create or refresh the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Diff against the latest published (non-draft) release, if any.
+          prev=$(gh release view --json tagName -q .tagName 2>/dev/null || true)
+
+          # Sweep every open draft by id (never by tag: a leftover draft can
+          # share a tag name with a published release).
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+            --jq '.[] | select(.draft) | .id' \
+          | while read -r id; do
+              [ -n "$id" ] || continue
+              echo "Deleting stale draft release id=$id"
+              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/$id"
+            done
+
+          args=(
+            "$VERSION"
+            --target main
+            --title "$VERSION"
+            --generate-notes
+            --draft
+          )
+          if [ -n "$prev" ]; then
+            args+=(--notes-start-tag "$prev")
+          fi
+          gh release create "${args[@]}"
+          url=$(gh release view "$VERSION" --json url -q .url)
+          {
+            echo
+            echo "### Draft release"
+            echo "Ready to review: $url"
+            echo
+            echo "Check the notes, then **Publish release**. That creates the \`$VERSION\` tag"
+            echo "and fires \`release.published\`: release.yml builds the panels and deploys"
+            echo "the installer and update manifests."
+          } >> "$GITHUB_STEP_SUMMARY"

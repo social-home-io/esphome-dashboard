@@ -204,9 +204,13 @@ CI compiles every device on each pull request and uploads the factory and OTA
 images as build artifacts, so a PR build can be flashed for testing. See
 [CONTRIBUTING.md](CONTRIBUTING.md) to add a panel.
 
-Releases use CalVer tags (`YYYY.M.D`, no `v` prefix). Publishing a release
-builds every device, attaches the images to the release and deploys the web
-installer plus update manifests to GitHub Pages.
+Releases use CalVer tags (`YYYY.M.D[.N]`, no `v` prefix). Every merge to
+`main` refreshes a **draft release** named after the next tag, with notes
+generated from the merged PRs (grouped by label; `release-draft.yml`).
+Publishing that draft creates the tag and builds every device, attaches the
+images to the release and deploys the web installer plus update manifests to
+GitHub Pages (`release.yml`). Publish it as a pre-release to keep panels on
+the wall from being offered it.
 
 ## License
 
