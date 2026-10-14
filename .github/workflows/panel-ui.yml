@@ -1,0 +1,144 @@
+# The panel next to the tablet on every pull request: scripts/screenshots/run.py
+# builds the host SDL panel, starts the Social Home the display API contract
+# pins (tests/fixtures/display-api/SOURCE) with the demo household, and shoots
+# every screen on the panel and in headless Chrome; check.py then fails the job
+# on a missing shot, a text more than 4 px from the browser's, an overlapping or
+# cut panel text, words only one screen says, or an error in the logs — except
+# what scripts/screenshots/accepted.json accepts with a reason.
+# See .claude/skills/panel-screenshots/SKILL.md.
+name: Panel UI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read  # the last main run's shots, for the informational diff
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shots:
+    name: Panel vs browser (${{ matrix.locale }}, ${{ matrix.scheme }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        locale: [en, de]
+        scheme: [light, dark]
+    env:
+      SHOTS: shots-${{ matrix.locale }}-${{ matrix.scheme }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Load pinned ESPHome version and Social Home commit
+        run: cat .github/esphome.env tests/fixtures/display-api/SOURCE | grep -E '^[A-Z_]+=' >> "$GITHUB_ENV"
+      - name: Social Home at the pinned commit
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.SOCIALHOME_REPO }}
+          ref: ${{ env.SOCIALHOME_REF }}
+          path: .ci/socialhome
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          # 3.14 for Social Home; 3.13 (the default, listed last) for ESPHome.
+          python-version: |
+            3.14
+            3.13
+      - name: SDL2, OpenSSL, Mbed TLS and the emoji font
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y --no-install-recommends
+          libsdl2-dev libssl-dev libmbedtls-dev fonts-noto-color-emoji
+      - name: Install ESPHome ${{ env.ESPHOME_VERSION }}
+        run: |
+          python3.13 -m venv .venv
+          .venv/bin/pip install "esphome==${ESPHOME_VERSION}" pillow
+      - name: Install Social Home's dependencies
+        env:
+          # A shallow checkout has no tags for hatch-vcs.
+          SETUPTOOLS_SCM_PRETEND_VERSION: "0.0.0"
+        run: |
+          python3.14 -m venv "$RUNNER_TEMP/sh-venv"
+          "$RUNNER_TEMP/sh-venv/bin/pip" install ./.ci/socialhome
+          # run.py runs the checkout itself (PYTHONPATH), which needs the
+          # _version.py hatch-vcs writes on install.
+          v=.ci/socialhome/socialhome/_version.py
+          [ -f "$v" ] || cat > "$v" <<'EOF'
+          __version__ = version = "0.0.0+ci"
+          __version_tuple__ = version_tuple = (0, 0, 0)
+          __commit_id__ = commit_id = None
+          EOF
+      - name: Cache the host build
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.platformio
+            builds/.esphome
+          key: >-
+            panel-ui-${{ env.ESPHOME_VERSION }}-${{
+            hashFiles('builds/host-sdl.yaml', 'builds/host/**', 'devices/**', 'components/**') }}
+          restore-keys: |
+            panel-ui-${{ env.ESPHOME_VERSION }}-
+            host-sdl-${{ env.ESPHOME_VERSION }}-
+      - name: Panel and browser screenshots
+        run: >-
+          .venv/bin/python scripts/screenshots/run.py
+          --socialhome .ci/socialhome
+          --socialhome-python "$RUNNER_TEMP/sh-venv/bin/python"
+          --chromium "$(command -v google-chrome || command -v chromium)"
+          --out "$SHOTS"
+          --locale ${{ matrix.locale }} --scheme ${{ matrix.scheme }}
+      - name: Check panel against browser
+        if: ${{ !cancelled() }}
+        run: python3 scripts/screenshots/check.py "$SHOTS" --summary "$GITHUB_STEP_SUMMARY"
+      - name: Diff against the last main run (information only)
+        if: ${{ !cancelled() && hashFiles(format('{0}/run.json', env.SHOTS)) != '' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow panel-ui.yml --branch main \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -z "$id" ]; then echo "No successful main run to compare with yet."; exit 0; fi
+          gh run download "$id" -R "$GITHUB_REPOSITORY" -n "panel-ui-${{ matrix.locale }}-${{ matrix.scheme }}" \
+            -D "$RUNNER_TEMP/reference"
+          .venv/bin/python scripts/screenshots/diff.py "$RUNNER_TEMP/reference" "$SHOTS" > /dev/null
+          {
+            echo "<details><summary>Changes since main run $id (pixels and boxes; information, not a failure)</summary>"
+            echo
+            cat "$SHOTS/diff/diff.md"
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload shots, offsets and logs
+        id: upload
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: panel-ui-${{ matrix.locale }}-${{ matrix.scheme }}
+          path: ${{ env.SHOTS }}/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Link the shots
+        if: ${{ !cancelled() && steps.upload.outputs.artifact-url != '' }}
+        run: >-
+          echo "Compare images, offsets, boxes and logs:
+          [panel-ui-${{ matrix.locale }}-${{ matrix.scheme }}](${{ steps.upload.outputs.artifact-url }})"
+          >> "$GITHUB_STEP_SUMMARY"
+
+  panel-ui:
+    # One check name for branch protection, whatever the matrix.
+    name: Panel UI
+    needs: [shots]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every locale and scheme passed
+        run: test "${{ needs.shots.result }}" = success
