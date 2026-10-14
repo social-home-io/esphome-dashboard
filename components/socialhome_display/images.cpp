@@ -5,6 +5,7 @@
 
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
+#include "png.h"
 #include "util.h"
 
 // Not re-exported by lvgl.h in 9.5.
@@ -18,23 +19,42 @@ static constexpr uint32_t RETRY_MS = 5 * 60 * 1000;
 /// At most this many downloads queued on the worker at once.
 static constexpr size_t MAX_IN_FLIGHT = 6;
 
-std::string ImageCache::key_(const std::string &path, int size, bool round) {
-  return path + "@" + std::to_string(size) + (round ? "o" : "");
+std::string ImageCache::key_(const std::string &path, int size, bool round, uint8_t grey) {
+  return path + "@" + std::to_string(size) + (round ? "o" : "") + (grey != 0 ? "g" + std::to_string(grey) : "");
 }
 
-void ImageCache::bind(lv_obj_t *img, const std::string &path, int size, bool round) {
-  std::string key = key_(path, size, round);
+ImageCache::Entry &ImageCache::entry_(const std::string &key, const std::string &path, int size, bool round,
+                                      uint8_t grey) {
   auto it = this->entries_.find(key);
   if (it == this->entries_.end()) {
     Entry entry;
     entry.path = path;
     entry.size = size;
     entry.round = round;
+    entry.grey = grey;
     it = this->entries_.emplace(key, std::move(entry)).first;
   }
-  Entry &entry = it->second;
   this->lru_.remove(key);
   this->lru_.push_front(key);
+  return it->second;
+}
+
+void ImageCache::ready_(Entry &entry, std::shared_ptr<Pixels> pixels) {
+  entry.pixels = std::move(pixels);
+  entry.dsc = lv_image_dsc_t{};
+  entry.dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+  entry.dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
+  entry.dsc.header.w = entry.pixels->width;
+  entry.dsc.header.h = entry.pixels->height;
+  entry.dsc.header.stride = entry.pixels->width * 4;
+  entry.dsc.data_size = entry.pixels->size;
+  entry.dsc.data = entry.pixels->data;
+  entry.state = Entry::READY;
+  this->bytes_ += entry.pixels->size;
+}
+
+void ImageCache::bind(lv_obj_t *img, const std::string &path, int size, bool round) {
+  Entry &entry = this->entry_(key_(path, size, round), path, size, round, 0);
   entry.objects.push_back(img);
   lv_obj_add_event_cb(img, ImageCache::on_delete_, LV_EVENT_DELETE, this);
   if (entry.state == Entry::READY) {
@@ -44,6 +64,39 @@ void ImageCache::bind(lv_obj_t *img, const std::string &path, int size, bool rou
     if (entry.state == Entry::FAILED && millis() - entry.failed_at > RETRY_MS)
       entry.state = Entry::QUEUED;
   }
+  this->start_downloads_();
+}
+
+void ImageCache::grey(lv_obj_t *img, uint8_t amount) {
+  Entry *colour = nullptr;
+  for (auto &kv : this->entries_) {
+    auto &objs = kv.second.objects;
+    if (kv.second.grey == 0 && std::find(objs.begin(), objs.end(), img) != objs.end()) {
+      colour = &kv.second;
+      break;
+    }
+  }
+  if (colour == nullptr || amount == 0)
+    return;
+  // std::map: adding the grey entry leaves `colour` valid.
+  Entry &entry = this->entry_(key_(colour->path, colour->size, colour->round, amount), colour->path, colour->size,
+                              colour->round, amount);
+  auto &objs = colour->objects;
+  objs.erase(std::remove(objs.begin(), objs.end(), img), objs.end());
+  entry.objects.push_back(img);
+  if (entry.state != Entry::READY && colour->state == Entry::READY) {
+    auto pixels = grey_copy(*colour->pixels, amount);
+    if (pixels != nullptr)
+      this->ready_(entry, std::move(pixels));
+  }
+  if (entry.state == Entry::READY) {
+    this->show_(entry, img);
+  } else {
+    lv_obj_add_flag(img, LV_OBJ_FLAG_HIDDEN);
+    if (entry.state == Entry::FAILED && millis() - entry.failed_at > RETRY_MS)
+      entry.state = Entry::QUEUED;
+  }
+  this->evict_();
   this->start_downloads_();
 }
 
@@ -110,17 +163,11 @@ bool ImageCache::loop() {
       entry.failed_at = millis();
       continue;
     }
-    entry.pixels = response.pixels;
-    entry.dsc = lv_image_dsc_t{};
-    entry.dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
-    entry.dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
-    entry.dsc.header.w = entry.pixels->width;
-    entry.dsc.header.h = entry.pixels->height;
-    entry.dsc.header.stride = entry.pixels->width * 4;
-    entry.dsc.data_size = entry.pixels->size;
-    entry.dsc.data = entry.pixels->data;
-    entry.state = Entry::READY;
-    this->bytes_ += entry.pixels->size;
+    // A grey variant fetched on its own (its colour picture wasn't cached):
+    // this download is the entry's alone, so it is greyed in place.
+    if (entry.grey != 0 && response.pixels->format == Pixels::ARGB8888)
+      grey_argb8888(response.pixels->data, response.pixels->size / 4, entry.grey);
+    this->ready_(entry, response.pixels);
     for (lv_obj_t *img : entry.objects)
       this->show_(entry, img);
     changed = changed || !entry.objects.empty();

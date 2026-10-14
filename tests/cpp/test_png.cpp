@@ -96,3 +96,52 @@ TEST(png_square_argb) {
   CHECK_EQ(int{pixels->data[3]}, 0);
   CHECK(decode_png(reinterpret_cast<const uint8_t *>("nope nope"), 9, 6, false) == nullptr);
 }
+
+TEST(grey_pixels_match_the_colour_helper) {
+  // B, G, R, A: a pink at half alpha and pure green.
+  uint8_t px[] = {0x72, 0x4D, 0xC4, 0x80, 0x00, 0xFF, 0x00, 0xFF};
+  grey_argb8888(px, 2, 255);
+  CHECK_EQ(px[0], 105);
+  CHECK_EQ(px[1], 105);
+  CHECK_EQ(px[2], 105);
+  CHECK_EQ(px[3], 0x80);  // alpha kept
+  CHECK_EQ(px[4], 0xB6);
+  CHECK_EQ(px[7], 0xFF);
+  uint8_t partial[] = {0x72, 0x4D, 0xC4, 0xFF};
+  grey_argb8888(partial, 1, 204);  // grayscale(0.8)
+  CHECK_EQ(partial[2], 0x7B);
+  CHECK_EQ(partial[1], 0x63);
+  CHECK_EQ(partial[0], 0x6B);
+  uint8_t none[] = {0x72, 0x4D, 0xC4, 0xFF};
+  grey_argb8888(none, 1, 0);
+  CHECK_EQ(none[2], 0xC4);
+}
+
+TEST(grey_copy_leaves_the_colour_picture) {
+  auto colour = decode_png(RGBA_3X2, sizeof(RGBA_3X2), 4, false);
+  CHECK(colour != nullptr);
+  if (colour == nullptr)
+    return;
+  auto grey = grey_copy(*colour, 255);
+  CHECK(grey != nullptr);
+  if (grey == nullptr)
+    return;
+  CHECK_EQ(grey->width, colour->width);
+  CHECK_EQ(grey->size, colour->size);
+  CHECK(grey->data != colour->data);
+  bool coloured = false;
+  for (size_t i = 0; i < grey->size; i += 4) {
+    CHECK_EQ(grey->data[i], grey->data[i + 1]);
+    CHECK_EQ(grey->data[i + 1], grey->data[i + 2]);
+    CHECK_EQ(grey->data[i + 3], colour->data[i + 3]);
+    coloured = coloured || colour->data[i] != colour->data[i + 2];
+  }
+  CHECK(coloured);  // the source kept its colour
+  // The map's RGB565 is never greyed this way.
+  PngStream png(16, 16, 0xFFFFFF);
+  png.feed(RGBA_3X2, sizeof(RGBA_3X2));
+  auto map = png.finish();
+  CHECK(map != nullptr);
+  if (map != nullptr)
+    CHECK(grey_copy(*map, 255) == nullptr);
+}

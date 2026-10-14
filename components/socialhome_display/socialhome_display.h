@@ -187,8 +187,18 @@ class SocialHomeDisplay : public Component {
   const Palette &palette_() const;
   /// How live data is painted now: greyed while offline (live_style).
   LiveStyle live_() const;
-  /// Fade a picture of live data (a face, an emoji) while offline.
+  /// Grey and fade a picture of live data (a face, an emoji) while
+  /// offline, as the browser's `.dash-stale [data-live]`.
   lv_obj_t *live_picture_(lv_obj_t *obj);
+  /// Drain `amount` of the colour from `obj` and everything in it — fills,
+  /// frames, words and pictures (a grey copy) — the browser's
+  /// `filter: grayscale(…)`.
+  void grey_picture_(lv_obj_t *obj, uint8_t amount);
+  /// A note card's fill (and, dark, its outline) for the scheme
+  /// (note_look); the ink for its words.
+  uint32_t paint_note_(lv_obj_t *card, const Note &note);
+  /// Is the board drawn in dark colours (dark mode, or night)?
+  bool dark_() const { return this->scheme_() != Scheme::LIGHT; }
   lv_obj_t *box_(lv_obj_t *parent);
   lv_obj_t *column_(lv_obj_t *parent, int gap);
   lv_obj_t *row_(lv_obj_t *parent, int gap);

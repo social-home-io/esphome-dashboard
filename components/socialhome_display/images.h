@@ -31,6 +31,11 @@ class ImageCache {
   /// `img`, scaled to size×size, now if cached, else once it has loaded.
   /// `img` stays hidden until then.
   void bind(lv_obj_t *img, const std::string &path, int size, bool round);
+  /// Show `img` (already bound) with `amount` of its colour drained — the
+  /// browser's `filter: grayscale(…)`. The grey copy is made from the
+  /// cached colour picture (so it works offline); one not loaded yet is
+  /// fetched and greyed as it arrives.
+  void grey(lv_obj_t *img, uint8_t amount);
   /// Feed finished downloads; true when something new is on screen.
   bool loop();
   /// Forget everything (server changed / unpaired).
@@ -43,6 +48,7 @@ class ImageCache {
     std::string path;
     int size{0};
     bool round{false};
+    uint8_t grey{0};
     enum State : uint8_t { QUEUED, LOADING, READY, FAILED } state{QUEUED};
     uint32_t failed_at{0};
     std::shared_ptr<Pixels> pixels;
@@ -50,7 +56,9 @@ class ImageCache {
     std::vector<lv_obj_t *> objects;
   };
 
-  static std::string key_(const std::string &path, int size, bool round);
+  static std::string key_(const std::string &path, int size, bool round, uint8_t grey = 0);
+  Entry &entry_(const std::string &key, const std::string &path, int size, bool round, uint8_t grey);
+  void ready_(Entry &entry, std::shared_ptr<Pixels> pixels);
   static void on_delete_(lv_event_t *event);
   void show_(Entry &entry, lv_obj_t *img);
   void unbind_(lv_obj_t *img);

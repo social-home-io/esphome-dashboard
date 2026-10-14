@@ -232,9 +232,56 @@ struct TileStyle {
 
 TileStyle tile_style(const Tile &tile, const Palette &p);
 
+/// How much colour drains from a picture (0 = none, 255 = all), the
+/// browser's `filter: grayscale(…)`: all of it for live data offline
+/// (`.dash-stale [data-live]`), 80 % for a map spot over an hour old
+/// (`.dash-mp-stale`).
+static constexpr uint8_t GREY_FULL = 255;
+static constexpr uint8_t GREY_STALE_SPOT = 204;
+
 /// CSS `filter: grayscale(1)` of one 0xRRGGBB colour: the Rec. 709 luma of
 /// the sRGB values on every channel, as the browser computes it.
 uint32_t grayscale(uint32_t rgb);
+/// CSS `filter: grayscale(amount / 255)`: each channel moved `amount` of
+/// the way to the luma (grey_channel).
+uint32_t grayscale(uint32_t rgb, uint8_t amount);
+
+/// How a note card is painted — the browser's `.dash-sticky` (Overview)
+/// and `.dash-note` (Notes tab): the fill and ink Social Home softened for
+/// the scheme (`light` by day, `dark` in dark mode and at night, as its
+/// ColorBook), a colourless note the CSS's own yellow; in dark mode and at
+/// night no shadow but a 1 px outline in the border colour.
+struct NoteLook {
+  uint32_t bg;
+  uint32_t ink;
+  bool shadow;   ///< light: the drop shadow
+  bool outline;  ///< dark / night: 1 px `p.border` outline instead
+};
+NoteLook note_look(const Note &note, bool dark);
+
+/// How the picture view's analog clock is painted — the browser's
+/// `.dash-pv-dial` and friends, all from the scheme's palette: the face in
+/// the card colour ringed in the text colour, major ticks and both hands
+/// and the hub in the text colour, minor ticks muted, and the time-timer
+/// wedge at half opacity.
+struct DialLook {
+  uint32_t face;
+  uint32_t ring;
+  uint32_t tick_major;
+  uint32_t tick_minor;
+  uint32_t hands;  ///< both hands and the hub
+  uint8_t wedge_opa;
+};
+DialLook dial_look(const Palette &p);
+
+/// The age line under a "Who's where" row (`.dash-mp-row-age`).
+struct SpotAge {
+  bool shown;        ///< hidden offline ("5 min ago" no longer true, data-rel)
+  bool clock;        ///< a ⏱ leads it (stale)
+  bool bold;         ///< stale ages are bold
+  std::string text;  ///< "5 min ago", or the server's "last seen 1 h ago"
+};
+SpotAge spot_age(const MapSpot &spot, bool offline);
 
 /// How a picture of live data fades while the panel is offline: the
 /// browser's `.dash-stale [data-live] [aria-hidden="true"]`, 45 %.
