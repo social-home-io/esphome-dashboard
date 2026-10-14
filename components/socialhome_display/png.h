@@ -30,6 +30,28 @@ struct Pixels {
   int stride() const { return this->width * (this->format == RGB565 ? 2 : 4); }
 };
 
+/// Rec. 709 luma of an sRGB colour (0.2126 R + 0.7152 G + 0.0722 B), in
+/// 16-bit fixed point — what CSS `filter: grayscale()` puts on every
+/// channel.
+inline uint8_t luma709(uint8_t r, uint8_t g, uint8_t b) {
+  return static_cast<uint8_t>((13933u * r + 46871u * g + 4732u * b + 32768u) >> 16);
+}
+
+/// One channel `amount` (0 … 255) of the way to `luma`: CSS
+/// `grayscale(amount / 255)`.
+inline uint8_t toward_grey(uint8_t c, uint8_t luma, uint8_t amount) {
+  return static_cast<uint8_t>((c * (255u - amount) + luma * amount + 127u) / 255u);
+}
+
+/// Drain `amount` of the colour from `count` ARGB8888 pixels (B, G, R, A
+/// bytes) in place; alpha is kept. LVGL has no grayscale filter, so a
+/// greyed picture (offline live data, a stale map spot) is a grey copy.
+void grey_argb8888(uint8_t *data, size_t count, uint8_t amount);
+
+/// A copy of `src` with `amount` of its colour drained (grey_argb8888);
+/// nullptr if `src` is no ARGB8888 picture or memory is short.
+std::shared_ptr<Pixels> grey_copy(const Pixels &src, uint8_t amount);
+
 /// malloc, from PSRAM when the chip has it.
 uint8_t *big_alloc(size_t size);
 

@@ -98,18 +98,11 @@ void SocialHomeDisplay::build_notes_tab_(lv_obj_t *parent) {
     lv_obj_set_style_min_height(sticky, this->m_.px(168), LV_PART_MAIN);
     lv_obj_set_style_pad_all(sticky, this->m_.px(18), LV_PART_MAIN);
     lv_obj_set_style_radius(sticky, this->m_.px(4), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(sticky, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_shadow_width(sticky, this->m_.px(8), LV_PART_MAIN);
-    lv_obj_set_style_shadow_offset_y(sticky, this->m_.px(2), LV_PART_MAIN);
-    lv_obj_set_style_shadow_opa(sticky, LV_OPA_20, LV_PART_MAIN);
-    uint32_t ink = p.text;
-    if (note.light.has_value()) {
-      lv_obj_set_style_bg_color(sticky, lv_color_hex(note.light->bg.or_else(p.surface)), LV_PART_MAIN);
-      ink = note.light->ink.or_else(p.text);
-    } else {
-      lv_obj_set_style_bg_color(sticky, lv_color_hex(p.surface), LV_PART_MAIN);
-      lv_obj_set_style_border_color(sticky, lv_color_hex(p.border), LV_PART_MAIN);
-      lv_obj_set_style_border_width(sticky, 1, LV_PART_MAIN);
+    const uint32_t ink = this->paint_note_(sticky, note);
+    if (note_look(note, this->dark_()).shadow) {
+      lv_obj_set_style_shadow_width(sticky, this->m_.px(8), LV_PART_MAIN);
+      lv_obj_set_style_shadow_offset_y(sticky, this->m_.px(2), LV_PART_MAIN);
+      lv_obj_set_style_shadow_opa(sticky, LV_OPA_20, LV_PART_MAIN);
     }
     this->rich_(sticky, note.text, FontRole::LARGE, ink);
   }
@@ -173,18 +166,33 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
         frame, lv_color_hex(person != nullptr ? person->color.or_else(p.border) : p.border), LV_PART_MAIN);
     lv_obj_t *avatar = this->avatar_(frame, spot.person, face - this->m_.px(12));
     lv_obj_center(avatar);
-    // A stale spot fades its face only; the words keep their contrast.
-    if (spot.stale)
-      lv_obj_set_style_opa(frame, OPA_STALE_FACE, LV_PART_MAIN);
+    // A spot over an hour old greys and fades its whole face — frame,
+    // initials and photo, as one layer (`.dash-mp-av.dash-mp-stale`); the
+    // words keep their contrast.
+    if (spot.stale) {
+      this->grey_picture_(frame, GREY_STALE_SPOT);
+      lv_obj_set_style_opa_layered(frame, OPA_STALE_FACE, LV_PART_MAIN);
+    }
     lv_obj_t *body = this->column_(item, this->m_.px(2));
     lv_obj_set_flex_grow(body, 1);
     this->text_(body, spot.name, FontRole::BODY_BOLD, p.text);
     lv_obj_t *where = this->row_(body, this->m_.px(6));
     this->emoji_(where, spot.icon, this->m_.px(20));
     this->text_(where, spot.place, FontRole::BODY, p.text);
-    // "5 min ago" is no longer true offline (the browser's data-rel).
-    if (!this->offline_)
-      this->text_(body, spot.when, FontRole::SMALL, p.muted);
+    // "5 min ago" is no longer true offline (the browser's data-rel); a
+    // stale spot says "⏱ last seen 1 h ago" in bold.
+    const SpotAge age = spot_age(spot, this->offline_);
+    if (age.shown) {
+      const FontRole font = age.bold ? FontRole::LABEL : FontRole::SMALL;
+      lv_obj_t *line = this->row_(body, this->m_.px(4));
+      lv_obj_set_width(line, LV_PCT(100));
+      lv_obj_set_flex_align(line, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+      if (age.clock)
+        this->emoji_(line, Emoji{"\xE2\x8F\xB1", "23f1"}, this->emoji_px_(font));
+      lv_obj_t *label = this->wrap_(line, age.text, font, p.muted);
+      lv_obj_set_width(label, 0);
+      lv_obj_set_flex_grow(label, 1);
+    }
   }
 }
 

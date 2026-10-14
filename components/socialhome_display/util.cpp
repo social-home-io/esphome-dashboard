@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "png.h"
+
 namespace esphome::socialhome_display {
 
 std::string normalize_server_url(const std::string &typed) {
@@ -494,10 +496,43 @@ TileStyle tile_style(const Tile &tile, const Palette &p) {
   return style;
 }
 
-uint32_t grayscale(uint32_t rgb) {
-  const double r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
-  const auto y = static_cast<uint32_t>(std::lround(std::clamp(0.2126 * r + 0.7152 * g + 0.0722 * b, 0.0, 255.0)));
-  return (y << 16) | (y << 8) | y;
+uint32_t grayscale(uint32_t rgb) { return grayscale(rgb, GREY_FULL); }
+
+uint32_t grayscale(uint32_t rgb, uint8_t amount) {
+  const uint8_t r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+  const uint8_t luma = luma709(r, g, b);
+  return (uint32_t{toward_grey(r, luma, amount)} << 16) | (uint32_t{toward_grey(g, luma, amount)} << 8) |
+         toward_grey(b, luma, amount);
+}
+
+namespace {
+// `.dash-sticky, .dash-note { background: var(--kb, #fff3a8); color: var(--kn, #1f1d1a) }`
+constexpr uint32_t NOTE_PLAIN_BG = 0xFFF3A8;
+constexpr uint32_t NOTE_PLAIN_INK = 0x1F1D1A;
+constexpr uint8_t WEDGE_OPA = 127;  // .dash-pv-wedge { opacity: 0.5 }
+}  // namespace
+
+NoteLook note_look(const Note &note, bool dark) {
+  NoteLook look{NOTE_PLAIN_BG, NOTE_PLAIN_INK, !dark, dark};
+  const std::optional<NoteColors> &colors = dark ? note.dark : note.light;
+  if (colors.has_value()) {
+    look.bg = colors->bg.or_else(NOTE_PLAIN_BG);
+    look.ink = colors->ink.or_else(NOTE_PLAIN_INK);
+  }
+  return look;
+}
+
+DialLook dial_look(const Palette &p) {
+  return DialLook{p.surface, p.text, p.text, p.muted, p.text, WEDGE_OPA};
+}
+
+SpotAge spot_age(const MapSpot &spot, bool offline) {
+  SpotAge age;
+  age.shown = !offline;
+  age.clock = spot.stale;
+  age.bold = spot.stale;
+  age.text = spot.stale && !spot.age_label.empty() ? spot.age_label : spot.when;
+  return age;
 }
 
 LiveStyle live_style(const Palette &p, bool stale) {

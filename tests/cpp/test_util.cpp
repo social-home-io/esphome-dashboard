@@ -543,6 +543,87 @@ TEST(offline_live_data_greys_but_stays_readable) {
   }
 }
 
+TEST(partial_grayscale_matches_the_browser) {
+  // CSS grayscale(a): every channel moved a of the way to the luma.
+  CHECK_EQ(grayscale(0xC44D72, 0), 0xC44D72u);
+  CHECK_EQ(grayscale(0xC44D72, GREY_FULL), grayscale(0xC44D72));
+  // 0.8 of the way: luma 105 (0.2126·196 + 0.7152·77 + 0.0722·114).
+  const uint32_t luma = grayscale(0xC44D72) & 0xFF;
+  CHECK_EQ(luma, 105u);
+  CHECK_EQ(grayscale(0xC44D72, GREY_STALE_SPOT), 0x7B636Bu);
+  CHECK_EQ(static_cast<int>(GREY_STALE_SPOT), 204);  // .dash-mp-stale: grayscale(0.8)
+  CHECK_EQ(grayscale(0xFFFFFF, GREY_STALE_SPOT), 0xFFFFFFu);
+}
+
+TEST(notes_follow_the_scheme) {
+  // Social Home softens each note toward the page, light and dark
+  // (ColorBook); dark mode and night draw the dark pair, outlined, unshadowed.
+  Note note;
+  note.light = NoteColors{Color::of(0xFDEF9D), Color::of(0x1F1D1A)};
+  note.dark = NoteColors{Color::of(0xBDB168), Color::of(0x1F1D1A)};
+  const NoteLook day = note_look(note, false);
+  CHECK_EQ(day.bg, 0xFDEF9Du);
+  CHECK_EQ(day.ink, 0x1F1D1Au);
+  CHECK(day.shadow);
+  CHECK(!day.outline);
+  const NoteLook dark = note_look(note, true);
+  CHECK_EQ(dark.bg, 0xBDB168u);
+  CHECK_EQ(dark.ink, 0x1F1D1Au);
+  CHECK(!dark.shadow);
+  CHECK(dark.outline);
+  // White ink on a dark fill is the dark pair's own.
+  note.dark = NoteColors{Color::of(0x3F2F7A), Color::of(0xFFFFFF)};
+  CHECK_EQ(note_look(note, true).ink, 0xFFFFFFu);
+  // A colourless note: the CSS fallback, #fff3a8 with the warm ink.
+  const NoteLook plain = note_look(Note{}, true);
+  CHECK_EQ(plain.bg, 0xFFF3A8u);
+  CHECK_EQ(plain.ink, 0x1F1D1Au);
+}
+
+TEST(dial_follows_the_scheme) {
+  // .dash-pv-dial: the card colour ringed in the text colour — a dark face
+  // in dark mode and at night, never a white one.
+  for (const Palette &p : palettes()) {
+    const DialLook d = dial_look(p);
+    CHECK_EQ(d.face, p.surface);
+    CHECK_EQ(d.ring, p.text);
+    CHECK_EQ(d.tick_major, p.text);
+    CHECK_EQ(d.tick_minor, p.muted);
+    CHECK_EQ(d.hands, p.text);
+    CHECK_EQ(static_cast<int>(d.wedge_opa), 127);  // .dash-pv-wedge { opacity: 0.5 }
+    CHECK(contrast_ratio(d.hands, d.face) >= 4.5);
+  }
+  Theme builtin;
+  CHECK_EQ(dial_look(builtin.dark).face, 0x22201Du);
+  CHECK_EQ(dial_look(builtin.night).face, 0x121110u);
+}
+
+TEST(stale_spot_says_last_seen) {
+  MapSpot spot;
+  spot.when = "1 h ago";
+  spot.age_label = "last seen 1 h ago";
+  spot.stale = true;
+  SpotAge age = spot_age(spot, false);
+  CHECK(age.shown);
+  CHECK(age.clock);
+  CHECK(age.bold);
+  CHECK_EQ(age.text, std::string("last seen 1 h ago"));
+  // Offline the age is hidden, as the browser's data-rel.
+  CHECK(!spot_age(spot, true).shown);
+  // Fresh: the bare "5 min ago", regular, no clock.
+  spot.stale = false;
+  spot.when = "5 min ago";
+  spot.age_label = "updated 5 min ago";
+  age = spot_age(spot, false);
+  CHECK(!age.clock);
+  CHECK(!age.bold);
+  CHECK_EQ(age.text, std::string("5 min ago"));
+  // A stale spot from a server without the label keeps the bare age.
+  spot.stale = true;
+  spot.age_label.clear();
+  CHECK_EQ(spot_age(spot, false).text, std::string("5 min ago"));
+}
+
 TEST(offline_fades_pictures_like_the_browser) {
   CHECK_EQ(static_cast<int>(OPA_STALE_PICTURE), 115);  // opacity: 0.45
 }

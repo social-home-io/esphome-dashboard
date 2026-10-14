@@ -27,6 +27,33 @@ uint8_t *big_alloc(size_t size) {
 
 Pixels::~Pixels() { free(this->data); }
 
+void grey_argb8888(uint8_t *data, size_t count, uint8_t amount) {
+  if (amount == 0)
+    return;
+  for (size_t i = 0; i < count; i++, data += 4) {
+    const uint8_t luma = luma709(data[2], data[1], data[0]);
+    data[0] = toward_grey(data[0], luma, amount);
+    data[1] = toward_grey(data[1], luma, amount);
+    data[2] = toward_grey(data[2], luma, amount);
+  }
+}
+
+std::shared_ptr<Pixels> grey_copy(const Pixels &src, uint8_t amount) {
+  if (src.format != Pixels::ARGB8888 || src.data == nullptr)
+    return nullptr;
+  auto out = std::make_shared<Pixels>();
+  out->data = big_alloc(src.size);
+  if (out->data == nullptr)
+    return nullptr;
+  memcpy(out->data, src.data, src.size);
+  out->width = src.width;
+  out->height = src.height;
+  out->format = src.format;
+  out->size = src.size;
+  grey_argb8888(out->data, src.size / 4, amount);
+  return out;
+}
+
 // ---- PNG ---------------------------------------------------------------
 
 namespace {

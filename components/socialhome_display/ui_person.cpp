@@ -22,8 +22,10 @@ struct Dial {
   bool wedge_full{false};
   int wedge_minutes{0};
   uint32_t wedge_color{0};
+  uint8_t wedge_opa{LV_OPA_COVER};
   uint32_t ink{0};
-  uint32_t tick{0};
+  uint32_t tick_major{0};
+  uint32_t tick_minor{0};
 };
 
 void free_dial(lv_event_t *event) { delete static_cast<Dial *>(lv_event_get_user_data(event)); }
@@ -66,19 +68,19 @@ void draw_dial(lv_event_t *event) {
     arc.start_angle = start;
     arc.end_angle = end;
     arc.color = lv_color_hex(d->wedge_color);
-    arc.opa = d->hands ? LV_OPA_70 : LV_OPA_COVER;
+    arc.opa = d->hands ? d->wedge_opa : LV_OPA_COVER;
     lv_draw_arc(layer, &arc);
   }
   if (!d->hands)
     return;
   lv_draw_line_dsc_t line;
   lv_draw_line_dsc_init(&line);
-  line.color = lv_color_hex(d->tick);
   line.round_start = 1;
   line.round_end = 1;
   const int outer = r - border - r / 14;
   for (int k = 0; k < 12; k++) {
     const bool major = k % 3 == 0;
+    line.color = lv_color_hex(major ? d->tick_major : d->tick_minor);
     int x1, y1, x2, y2;
     hand_end(k * 30.0f, cx, cy, outer, &x1, &y1);
     hand_end(k * 30.0f, cx, cy, outer - (major ? r / 6 : r / 10), &x2, &y2);
@@ -103,24 +105,40 @@ void draw_dial(lv_event_t *event) {
   line.p2.x = x;
   line.p2.y = y;
   lv_draw_line(layer, &line);
+  // The hub (`.dash-pv-hub`, r 7 of the 96 dial).
+  lv_draw_arc_dsc_t hub;
+  lv_draw_arc_dsc_init(&hub);
+  hub.center.x = cx;
+  hub.center.y = cy;
+  hub.radius = static_cast<uint16_t>(std::max(3, r * 7 / 96));
+  hub.width = hub.radius;
+  hub.start_angle = 0;
+  hub.end_angle = 360;
+  hub.color = lv_color_hex(d->ink);
+  lv_draw_arc(layer, &hub);
 }
 
 }  // namespace
 
 void SocialHomeDisplay::build_analog_clock_(lv_obj_t *parent, const AnalogClock &clock, int size) {
   const Palette &p = this->palette_();
+  // The browser's dial is drawn from the scheme's palette: a dark face at
+  // night and in dark mode (dial_look).
+  const DialLook look = dial_look(p);
   lv_obj_t *dial = this->box_(parent);
   lv_obj_set_size(dial, size, size);
   lv_obj_set_style_radius(dial, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(dial, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(dial, lv_color_hex(look.face), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(dial, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_border_color(dial, lv_color_hex(p.text), LV_PART_MAIN);
+  lv_obj_set_style_border_color(dial, lv_color_hex(look.ring), LV_PART_MAIN);
   lv_obj_set_style_border_width(dial, std::max(3, size / 40), LV_PART_MAIN);
   auto *d = new Dial();
   d->hour_deg = clock.hour_deg;
   d->minute_deg = clock.minute_deg;
-  d->ink = 0x1F1D1A;
-  d->tick = 0x5F5A52;
+  d->ink = look.hands;
+  d->tick_major = look.tick_major;
+  d->tick_minor = look.tick_minor;
+  d->wedge_opa = look.wedge_opa;
   // The time-timer wedge counts down to NEXT: no longer true offline (the
   // browser's data-rel), so the dial shows only the time.
   if (clock.wedge.has_value() && !this->offline_) {

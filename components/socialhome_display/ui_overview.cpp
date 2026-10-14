@@ -205,15 +205,7 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
       lv_obj_set_width(sticky, LV_PCT(100));
       lv_obj_set_style_pad_all(sticky, this->m_.px(14), LV_PART_MAIN);
       lv_obj_set_style_radius(sticky, this->m_.px(4), LV_PART_MAIN);
-      lv_obj_set_style_bg_opa(sticky, LV_OPA_COVER, LV_PART_MAIN);
-      uint32_t ink = p.text;
-      if (note.light.has_value()) {
-        lv_obj_set_style_bg_color(sticky, lv_color_hex(note.light->bg.or_else(p.bg)), LV_PART_MAIN);
-        ink = note.light->ink.or_else(p.text);
-      } else {
-        lv_obj_set_style_bg_color(sticky, lv_color_hex(p.bg), LV_PART_MAIN);
-      }
-      this->rich_(sticky, note.text, FontRole::BODY, ink);
+      this->rich_(sticky, note.text, FontRole::BODY, this->paint_note_(sticky, note));
     }
   }
 }

@@ -71,9 +71,37 @@ const Palette &SocialHomeDisplay::palette_() const { return this->theme_.palette
 
 LiveStyle SocialHomeDisplay::live_() const { return live_style(this->palette_(), this->offline_); }
 
+void SocialHomeDisplay::grey_picture_(lv_obj_t *obj, uint8_t amount) {
+  if (lv_obj_check_type(obj, &lv_image_class)) {
+    this->images_.grey(obj, amount);
+    return;
+  }
+  auto grey = [amount](lv_color_t c) { return lv_color_hex(grayscale(lv_color_to_u32(c) & 0xFFFFFF, amount)); };
+  lv_obj_set_style_bg_color(obj, grey(lv_obj_get_style_bg_color(obj, LV_PART_MAIN)), LV_PART_MAIN);
+  lv_obj_set_style_border_color(obj, grey(lv_obj_get_style_border_color(obj, LV_PART_MAIN)), LV_PART_MAIN);
+  lv_obj_set_style_text_color(obj, grey(lv_obj_get_style_text_color(obj, LV_PART_MAIN)), LV_PART_MAIN);
+  const uint32_t n = lv_obj_get_child_count(obj);
+  for (uint32_t i = 0; i < n; i++)
+    this->grey_picture_(lv_obj_get_child(obj, static_cast<int32_t>(i)), amount);
+}
+
+uint32_t SocialHomeDisplay::paint_note_(lv_obj_t *card, const Note &note) {
+  const NoteLook look = note_look(note, this->dark_());
+  lv_obj_set_style_bg_color(card, lv_color_hex(look.bg), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(card, LV_OPA_COVER, LV_PART_MAIN);
+  if (look.outline) {
+    lv_obj_set_style_outline_color(card, lv_color_hex(this->palette_().border), LV_PART_MAIN);
+    lv_obj_set_style_outline_width(card, 1, LV_PART_MAIN);
+  }
+  return look.ink;
+}
+
 lv_obj_t *SocialHomeDisplay::live_picture_(lv_obj_t *obj) {
   if (!this->offline_)
     return obj;
+  // `filter: grayscale(1)` on the live section, then the picture's own
+  // `opacity: 0.45`.
+  this->grey_picture_(obj, GREY_FULL);
   // A face is a circle with its initials under the photo: plain opacity
   // fades each part on its own, so the initials would show through the
   // photo. Faded as one layer it looks like the browser's faded face.
