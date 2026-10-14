@@ -223,6 +223,10 @@ class SocialHomeDisplay : public Component {
   /// Gives text in `font` the browser's line box, `css_line` design px a
   /// line (line_box): a label, or a rich_ row and the labels in it.
   void line_box_(lv_obj_t *obj, FontRole font, float css_line);
+  /// How far below the top of a `css_line` line of `font` an inline box of
+  /// `inner` text in its own `inner_css` line starts, both on one baseline
+  /// (inline_top). `inner_css` 0: an inline span, as tall as its font.
+  int inline_top_(FontRole font, float css_line, FontRole inner, float inner_css = 0);
   lv_obj_t *emoji_(lv_obj_t *parent, const Emoji &emoji, int size);
   lv_obj_t *avatar_(lv_obj_t *parent, const std::string &person_id, int size);
   lv_obj_t *avatar_of_(lv_obj_t *parent, const std::string &initials, const std::string &avatar, Color color,

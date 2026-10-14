@@ -269,6 +269,21 @@ struct LineBox {
 };
 LineBox line_box(int font_line, int css_line);
 
+/// Where an inline box's top sits when it shares a baseline with a CSS line
+/// (`align-items: baseline`, or an inline span in a block): the line is
+/// `css_line` px of a font `font_line` px tall with `font_base` px below its
+/// baseline (an LVGL font's `base_line`); the inner box is its own
+/// `inner_css` px line of an `inner_line` / `inner_base` font. The CSS
+/// lines stay fractional (29.7 px), as the browser lays them out, and the
+/// result is rounded once. Negative when the inner box reaches above.
+int inline_top(float css_line, int font_line, int font_base, float inner_css, int inner_line, int inner_base);
+
+/// Whether the rail names the Home tile under the house: always, except on
+/// a picture-view person's page, where the tablet hides the word
+/// (`_rail.html.j2`: `dash-visually-hidden` while `picture`) and the tile is
+/// only the house — 88 px, not 120.
+bool rail_names_home(BoardKind kind, const std::string &person_kind);
+
 /// `.dash-top-side` (NEXT and the messages): flex 1 1 20rem, at most
 /// 40rem, at the end of the Overview's top row, 32 px past the clock
 /// column, which keeps at least 20rem (the date). Screen px, for a

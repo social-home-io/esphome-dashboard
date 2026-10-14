@@ -287,6 +287,16 @@ lv_obj_t *SocialHomeDisplay::caps_(lv_obj_t *parent, const std::string &text, ui
   return label;
 }
 
+int SocialHomeDisplay::inline_top_(FontRole font, float css_line, FontRole inner, float inner_css) {
+  const lv_font_t *f = this->font_(font);
+  const lv_font_t *g = this->font_(inner);
+  const int inner_line = lv_font_get_line_height(g);
+  // No line of its own (an inline span): the glyph run, font_line tall.
+  const float inner_box = inner_css > 0 ? inner_css * this->m_.scale : static_cast<float>(inner_line);
+  return inline_top(css_line * this->m_.scale, lv_font_get_line_height(f), f->base_line, inner_box, inner_line,
+                    g->base_line);
+}
+
 void SocialHomeDisplay::line_box_(lv_obj_t *obj, FontRole font, float css_line) {
   const LineBox box = line_box(lv_font_get_line_height(this->font_(font)), this->m_.px(css_line));
   lv_obj_set_style_pad_top(obj, box.above, LV_PART_MAIN);
@@ -718,7 +728,8 @@ void SocialHomeDisplay::build_frame_(lv_obj_t *screen) {
 void SocialHomeDisplay::build_rail_(lv_obj_t *parent) {
   const Palette &p = this->palette_();
   const Header &h = this->board_->header;
-  lv_obj_t *rail = this->column_(parent, this->m_.px(10));
+  // .dash-rail-list: 6 px between the items (2 px with many people).
+  lv_obj_t *rail = this->column_(parent, this->m_.px(h.rail.many ? 2 : 6));
   lv_obj_set_size(rail, this->m_.rail_width(), LV_PCT(100));
   lv_obj_set_flex_align(rail, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_bg_color(rail, lv_color_hex(p.surface), LV_PART_MAIN);
@@ -733,11 +744,13 @@ void SocialHomeDisplay::build_rail_(lv_obj_t *parent) {
   const int size = h.rail.many ? this->m_.px(56) : this->m_.rail_avatar();
   const bool home_current = this->board_->kind != BoardKind::PERSON;
 
+  // .dash-rail-item: 8 px round the face, 10 px down to the name (4 and 6
+  // with many people).
   auto item = [&](bool current, const std::string &path) {
-    lv_obj_t *it = this->column_(rail, this->m_.px(6));
+    lv_obj_t *it = this->column_(rail, this->m_.px(h.rail.many ? 6 : 10));
     lv_obj_set_width(it, this->m_.px(88));
     lv_obj_set_flex_align(it, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_ver(it, this->m_.px(8), LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(it, this->m_.px(h.rail.many ? 4 : 8), LV_PART_MAIN);
     lv_obj_set_style_radius(it, this->m_.px(14), LV_PART_MAIN);
     if (current) {
       lv_obj_set_style_bg_color(it, lv_color_hex(p.bg), LV_PART_MAIN);
@@ -766,7 +779,12 @@ void SocialHomeDisplay::build_rail_(lv_obj_t *parent) {
   lv_obj_center(icon);
   if (home_current)
     ring(house);
-  this->text_(home, this->str_("nav_home"), home_current ? FontRole::LABEL : FontRole::SMALL, p.text);
+  // .dash-rail-name: 16 px in the board's 1.35 line. A picture-view page
+  // shows only the house (rail_names_home).
+  if (rail_names_home(this->board_->kind, this->board_->person_kind)) {
+    lv_obj_t *name = this->text_(home, this->str_("nav_home"), home_current ? FontRole::LABEL : FontRole::SMALL, p.text);
+    this->line_box_(name, home_current ? FontRole::LABEL : FontRole::SMALL, 21.6f);
+  }
 
   for (const auto &person : h.people) {
     bool current = h.rail.current == person.id;
@@ -786,6 +804,7 @@ void SocialHomeDisplay::build_rail_(lv_obj_t *parent) {
       lv_obj_align(dot, LV_ALIGN_TOP_RIGHT, this->m_.px(4), -this->m_.px(4));
     }
     lv_obj_t *name = this->text_(it, person.name, current ? FontRole::LABEL : FontRole::SMALL, p.text);
+    this->line_box_(name, current ? FontRole::LABEL : FontRole::SMALL, 21.6f);
     lv_obj_set_width(name, LV_PCT(100));
     lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_long_mode(name, LV_LABEL_LONG_MODE_DOTS);

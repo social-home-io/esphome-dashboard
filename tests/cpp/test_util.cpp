@@ -487,6 +487,31 @@ TEST(line_box_puts_the_leading_where_css_does) {
   CHECK_EQ(b.between, 0);
 }
 
+TEST(inline_top_shares_the_baseline) {
+  // "SCHOOL CHANGES TODAY": a 16 px label (19 px font, 4 below the
+  // baseline) inline in a 22 px line of 29.7 px (26 px font, 6 below):
+  // baseline 1.85 + 20 px down, the label's top 6.85 px under the line's.
+  CHECK_EQ(inline_top(29.7f, 26, 6, 19, 19, 4), 7);
+  // Fractions round once, at the end (1.85 + 21 - 15).
+  CHECK_EQ(inline_top(29.7f, 26, 5, 19, 19, 4), 8);
+  // The CANCELLED tag: its own 24 px line, 2.5 px of leading above it.
+  CHECK_EQ(inline_top(29.7f, 26, 5, 24, 19, 4), 5);
+  // Same font, same line: no offset.
+  CHECK_EQ(inline_top(30, 26, 6, 30, 26, 6), 0);
+  // A bigger inner font reaches above the line.
+  CHECK_EQ(inline_top(20, 19, 4, 38, 38, 8), -15);
+}
+
+TEST(rail_names_home_except_in_the_picture_view) {
+  CHECK(rail_names_home(BoardKind::OVERVIEW, ""));
+  CHECK(rail_names_home(BoardKind::MESSAGES, ""));
+  CHECK(rail_names_home(BoardKind::MAP, ""));
+  CHECK(rail_names_home(BoardKind::PERSON, "reader"));
+  CHECK(!rail_names_home(BoardKind::PERSON, "picture"));
+  // Only a person page is a picture view.
+  CHECK(rail_names_home(BoardKind::OVERVIEW, "picture"));
+}
+
 TEST(top_side_matches_the_tablet) {
   // .dash-top-side: 40rem at the end of the row on the 1280 x 800 panel,
   // with and without the rail.

@@ -143,47 +143,78 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
         this->emoji_(empty, t.empty_icon, this->m_.emoji_md());
       this->text_(empty, t.empty.empty() ? this->str_("empty_day") : t.empty, FontRole::BODY, p.muted);
     }
+    // What follows the day sits by the card's own margins, not its gap.
+    const int card_gap = lv_obj_get_style_pad_row(card, LV_PART_MAIN);
+    const int body_line = this->m_.px(29.7f);  // .dash-board: 22 px, line-height 1.35
     if (!t.at_school.empty()) {
-      lv_obj_t *line = this->row_(card, this->m_.px(14));
+      // .dash-school-now: 16 px under the day, one centred flex line —
+      // 12 px between items (8 px between wrapped lines), the label's
+      // 8 px margin after and below it.
+      lv_obj_t *line = this->row_(card, this->m_.px(12));
       lv_obj_set_width(line, LV_PCT(100));
-      lv_obj_set_style_pad_top(line, this->m_.px(10), LV_PART_MAIN);
+      lv_obj_set_style_margin_top(line, std::max(0, this->m_.px(16) - card_gap), LV_PART_MAIN);
+      lv_obj_set_style_pad_row(line, this->m_.px(8), LV_PART_MAIN);
       lv_obj_set_flex_flow(line, LV_FLEX_FLOW_ROW_WRAP);
-      this->caps_(line, t.at_school_label, p.muted);
+      lv_obj_t *label = this->caps_(line, t.at_school_label, p.muted);
+      this->line_box_(label, FontRole::LABEL, 20.8f);  // .dash-sublabel: line-height 1.3
+      lv_obj_set_style_margin_right(label, this->m_.px(8), LV_PART_MAIN);
+      lv_obj_set_style_margin_bottom(label, this->m_.px(8), LV_PART_MAIN);
       for (const auto &item : t.at_school) {
         lv_obj_t *it = this->row_(line, this->m_.px(6));
         for (const auto &id : item.people)
           this->avatar_(it, id, this->m_.px(32));
         if (!item.icon.empty())
           this->emoji_(it, item.icon, this->m_.emoji_sm());
-        this->text_(it, item.title, FontRole::BODY, p.text);
-        this->text_(it, item.until, FontRole::BODY, p.muted);
+        this->line_box_(this->text_(it, item.title, FontRole::BODY, p.text), FontRole::BODY, 29.7f);
+        this->line_box_(this->text_(it, item.until, FontRole::BODY, p.muted), FontRole::BODY, 29.7f);
       }
     }
     if (!t.changes.empty()) {
-      lv_obj_t *block = this->column_(card, this->m_.px(8));
+      // .dash-changes: 12 px under the line above; its label is inline in
+      // a body line, the list 4 px below that line.
+      lv_obj_t *block = this->column_(card, this->m_.px(4));
       lv_obj_set_width(block, LV_PCT(100));
-      lv_obj_set_style_pad_top(block, this->m_.px(6), LV_PART_MAIN);
-      this->caps_(block, t.changes_label, p.muted);
+      lv_obj_set_style_margin_top(block, std::max(0, this->m_.px(t.at_school.empty() ? 16 : 12) - card_gap),
+                               LV_PART_MAIN);
+      lv_obj_t *label = this->caps_(block, t.changes_label, p.muted);
+      const int label_top = this->inline_top_(FontRole::BODY, 29.7f, FontRole::LABEL);
+      lv_obj_set_style_margin_top(label, label_top, LV_PART_MAIN);
+      lv_obj_set_style_margin_bottom(
+          label, body_line - label_top - static_cast<int>(lv_font_get_line_height(this->font_(FontRole::LABEL))),
+          LV_PART_MAIN);
+      // .dash-change-list: 8 px between lines, 24 px between changes; a
+      // change lines its parts up on the baseline, 8 px apart.
       lv_obj_t *line = this->row_(block, this->m_.px(24));
       lv_obj_set_width(line, LV_PCT(100));
       lv_obj_set_flex_flow(line, LV_FLEX_FLOW_ROW_WRAP);
       lv_obj_set_style_pad_row(line, this->m_.px(8), LV_PART_MAIN);
+      lv_obj_set_flex_align(line, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+      // .dash-tag: a 24 px line in a 1 px border, on the text's baseline.
+      const int tag_top = this->inline_top_(FontRole::BODY, 29.7f, FontRole::LABEL, 24.0f) - 1;
       for (const auto &change : t.changes) {
-        lv_obj_t *it = this->row_(line, this->m_.px(6));
+        lv_obj_t *it = this->row_(line, this->m_.px(8));
+        lv_obj_set_flex_align(it, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         bool cancelled = change.status == Status::CANCELLED;
-        this->emoji_(it, cancelled ? Emoji{"\xE2\x9A\xA0", "26a0"} : Emoji{"\xF0\x9F\x94\x81", "1f501"},
-                     this->m_.emoji_sm());
+        lv_obj_t *icon = this->emoji_(
+            it, cancelled ? Emoji{"\xE2\x9A\xA0", "26a0"} : Emoji{"\xF0\x9F\x94\x81", "1f501"}, this->m_.emoji_sm());
+        lv_obj_set_style_margin_top(icon, (body_line - this->m_.emoji_sm()) / 2, LV_PART_MAIN);
         if (!change.who.empty())
-          this->text_(it, change.who + ":", FontRole::BODY, p.text);
+          this->line_box_(this->text_(it, change.who + ":", FontRole::BODY, p.text), FontRole::BODY, 29.7f);
         lv_obj_t *title = this->text_(it, change.title, FontRole::BODY, p.text);
+        this->line_box_(title, FontRole::BODY, 29.7f);
         if (cancelled)
           lv_obj_set_style_text_decor(title, LV_TEXT_DECOR_STRIKETHROUGH, LV_PART_MAIN);
         uint32_t fg = cancelled ? p.error_text : p.text;
-        lv_obj_t *pill = this->pill_(it, upper(change.status_label), p.surface, fg, FontRole::LABEL);
+        // .dash-tag-warn fills a cancelled tag; the others are outlined.
+        lv_obj_t *pill = this->pill_(it, upper(change.status_label), cancelled ? p.error_bg : p.surface, fg,
+                                     FontRole::LABEL);
         lv_obj_set_style_border_color(pill, lv_color_hex(fg), LV_PART_MAIN);
         lv_obj_set_style_border_width(pill, 1, LV_PART_MAIN);
+        lv_obj_set_style_pad_ver(pill, 0, LV_PART_MAIN);
+        this->line_box_(lv_obj_get_child(pill, 0), FontRole::LABEL, 24.0f);
+        lv_obj_set_style_margin_top(pill, tag_top, LV_PART_MAIN);
         if (!change.meta.empty())
-          this->text_(it, change.meta, FontRole::BODY, p.muted);
+          this->line_box_(this->text_(it, change.meta, FontRole::BODY, p.muted), FontRole::BODY, 29.7f);
       }
     }
   }

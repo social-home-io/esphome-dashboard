@@ -37,6 +37,8 @@ behave the same. Its own `CLAUDE.md` carries the mirror of this rule.
   the browser's measured boxes. Put the comparison in the PR; any remaining
   difference is fixed or listed (font and emoji artwork are the accepted
   ones). Give every host panel its own driver file (see `tests/README.md`).
+  One command takes both sets of screenshots with the offsets:
+  `scripts/screenshots/run.py` (how and when: `.claude/skills/panel-screenshots/`).
 
 ## Firmware rules
 
