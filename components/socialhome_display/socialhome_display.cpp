@@ -1006,12 +1006,16 @@ void SocialHomeDisplay::handle_board_(HttpResponse &response) {
       }
       if (r == ParseResult::OK) {
         bool was_locked = this->mode_ == Mode::LOCKED;
+        // Rebuild only for a change the screen shows (the time ticks by
+        // itself): a rebuild under a pressing finger loses the tap, and one
+        // while the PIN pad is open would wipe the PIN being typed.
+        bool changed = !was_locked || lock_screen_changed(this->lock_, lock);
         this->lock_ = std::move(lock);
         if (!was_locked) {
           this->current_path_ = HOME_PATH;
           this->set_mode_(Mode::LOCKED);
-        } else {
-          this->dirty_ = !this->pin_open_;  // don't wipe a PIN being typed
+        } else if (changed && !this->pin_open_) {
+          this->dirty_ = true;
         }
       }
       return;
