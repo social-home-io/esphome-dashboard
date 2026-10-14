@@ -251,7 +251,7 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
     lv_obj_t *pic = this->emoji_(where, spot.icon, this->emoji_px_(FontRole::TEXT));
     // The browser's emoji glyph advances ~1.05 Roboto lines.
     lv_obj_set_style_margin_right(
-        pic, std::max(0, lv_font_get_line_height(this->font_(FontRole::TEXT)) * 105 / 100 - this->emoji_px_(FontRole::TEXT)),
+        pic, std::max<int>(0, lv_font_get_line_height(this->font_(FontRole::TEXT)) * 105 / 100 - this->emoji_px_(FontRole::TEXT)),
         LV_PART_MAIN);
     this->line_box_(this->text_(where, spot.place, FontRole::TEXT, p.text), FontRole::TEXT, place_line);
     // "5 min ago" is no longer true offline (the browser's data-rel); a
