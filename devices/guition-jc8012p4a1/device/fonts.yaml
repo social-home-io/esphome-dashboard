@@ -82,5 +82,54 @@ font:
     glyphsets: [GF_Latin_Core]
     ignore_missing_glyphs: true
 
+  # The browser's in-between sizes (dashboard.css at 1280x800): 20 px tab
+  # labels (.dash-tab, 600 → bold) and NOW / NEXT room line (.dash-nn-meta),
+  # 28 px bold NOW / NEXT titles (.dash-nn-title), 24 px message and @here
+  # text (.dash-chat-text, .dash-alert-text) and the lock screen's household
+  # and date with the PIN pad open, 15 px picture-view captions
+  # (.dash-pv-cap), 13 px bold tags and badges (.dash-tag in a message,
+  # .dash-tab-badge) and 11 px bold small caps (.dash-pv-sec: all-small-caps
+  # on a 16 px line, drawn as capitals at 0.7 em).
+  - id: font_medium
+    file: "gfonts://Roboto"
+    size: ${font_size_medium}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - id: font_medium_bold
+    file: {type: gfonts, family: Roboto, weight: bold}
+    size: ${font_size_medium}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - id: font_heading
+    file: {type: gfonts, family: Roboto, weight: bold}
+    size: ${font_size_large}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - id: font_message
+    file: "gfonts://Roboto"
+    size: ${font_size_message}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - id: font_caption
+    file: "gfonts://Roboto"
+    size: ${font_size_caption}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - id: font_tag
+    file: {type: gfonts, family: Roboto, weight: bold}
+    size: ${font_size_tag}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - id: font_micro
+    file: {type: gfonts, family: Roboto, weight: bold}
+    size: ${font_size_micro}
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  # The clock on a person's page (.dash-clock-sm: 4rem, weight 300).
+  - id: font_clock_small
+    file: {type: gfonts, family: Roboto, weight: 300}
+    size: ${font_size_clock_small}
+    glyphs: "0123456789:. APM"
+
 lvgl:
   default_font: font_body

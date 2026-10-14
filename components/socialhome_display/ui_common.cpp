@@ -28,7 +28,20 @@ const lv_font_t *SocialHomeDisplay::font_(FontRole role) const {
       case FontRole::LOCK_TIME:
         return this->font_(FontRole::NIGHT);
       case FontRole::TEXT_LARGE:
+      case FontRole::HEADING:
         return this->font_(FontRole::LARGE);
+      case FontRole::MEDIUM:
+      case FontRole::MESSAGE:
+        return this->font_(FontRole::BODY);
+      case FontRole::MEDIUM_BOLD:
+        return this->font_(FontRole::BODY_BOLD);
+      case FontRole::CAPTION:
+        return this->font_(FontRole::SMALL);
+      case FontRole::TAG:
+      case FontRole::MICRO:
+        return this->font_(FontRole::LABEL);
+      case FontRole::CLOCK_SMALL:
+        return this->font_(FontRole::DISPLAY);
       case FontRole::TEXT:
         return this->font_(FontRole::SMALL);
       case FontRole::TEXT_BOLD:
@@ -178,6 +191,25 @@ int SocialHomeDisplay::emoji_px_(FontRole font) const {
   return std::max(12, static_cast<int>(lv_font_get_line_height(this->font_(font))) * 9 / 10);
 }
 
+namespace {
+/// A rich_ row's one wrapping label: as wide as its longest line at the
+/// row's width, whenever that width changes.
+void shrink_to_lines(lv_event_t *event) {
+  lv_obj_t *row = lv_event_get_current_target_obj(event);
+  lv_obj_t *label = lv_obj_get_child(row, 0);
+  const int room = lv_obj_get_content_width(row);
+  if (label == nullptr || !lv_obj_check_type(label, &lv_label_class) || room <= 0)
+    return;
+  lv_point_t extent;
+  lv_text_get_size(&extent, lv_label_get_text(label), lv_obj_get_style_text_font(label, LV_PART_MAIN),
+                   lv_obj_get_style_text_letter_space(label, LV_PART_MAIN),
+                   lv_obj_get_style_text_line_space(label, LV_PART_MAIN), room, LV_TEXT_FLAG_NONE);
+  const int width = std::min<int>(room, extent.x);
+  if (lv_obj_get_style_width(label, LV_PART_MAIN) != width)
+    lv_obj_set_width(label, width);
+}
+}  // namespace
+
 lv_obj_t *SocialHomeDisplay::rich_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color) {
   // The fonts carry no emoji: each word is a label and each emoji a picture
   // in one wrapping row, so the emoji stay where they were typed.
@@ -191,9 +223,12 @@ lv_obj_t *SocialHomeDisplay::rich_(lv_obj_t *parent, const std::string &text, Fo
   // too much memory) one wrapping label does it.
   static constexpr size_t MAX_PIECES = 80;
   if (!has_emoji || runs.size() > MAX_PIECES) {
+    // Wrapped at the row's width, and as wide as its longest line (the
+    // browser's text box) — LVGL doesn't shrink a wrapping label itself.
     lv_obj_t *label = this->text_(row, text, font, color);
     lv_obj_set_width(label, LV_PCT(100));
     lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_WRAP);
+    lv_obj_add_event_cb(row, shrink_to_lines, LV_EVENT_SIZE_CHANGED, nullptr);
     if (has_emoji) {
       for (const auto &code : emoji_codes(text, 3))
         this->emoji_(row, Emoji{"", code}, this->emoji_px_(font));
@@ -283,7 +318,26 @@ lv_obj_t *SocialHomeDisplay::inline_(lv_obj_t *parent, const std::string &text, 
 
 lv_obj_t *SocialHomeDisplay::caps_(lv_obj_t *parent, const std::string &text, uint32_t color) {
   lv_obj_t *label = this->text_(parent, upper(text), FontRole::LABEL, color);
-  lv_obj_set_style_text_letter_space(label, std::max(1, this->m_.px(1.5f)), LV_PART_MAIN);
+  // letter-spacing: 0.06em on the 16 px labels (0.96 px): LVGL spaces in
+  // whole pixels, so 1 px — 2 px made a 20-letter label 19 px too wide.
+  lv_obj_set_style_text_letter_space(label, std::max(1, this->m_.px(0.06f * 16)), LV_PART_MAIN);
+  return label;
+}
+
+void SocialHomeDisplay::line_margin_(lv_obj_t *obj, FontRole font, float css_line) {
+  const LineBox box = line_box(lv_font_get_line_height(this->font_(font)), this->m_.px(css_line));
+  lv_obj_set_style_margin_top(obj, box.above, LV_PART_MAIN);
+  lv_obj_set_style_margin_bottom(obj, box.below, LV_PART_MAIN);
+  if (lv_obj_check_type(obj, &lv_label_class))
+    lv_obj_set_style_text_line_space(obj, box.between, LV_PART_MAIN);
+}
+
+lv_obj_t *SocialHomeDisplay::pv_sec_(lv_obj_t *parent, const std::string &text) {
+  // .dash-pv-sec: 16 px all-small-caps — the browser draws the capitals at
+  // 0.7 em (11 px bold) — 0.06em apart on a 1.2 line.
+  lv_obj_t *label = this->text_(parent, upper(text), FontRole::MICRO, this->palette_().muted);
+  lv_obj_set_style_text_letter_space(label, std::max(1, this->m_.px(0.06f * 16)), LV_PART_MAIN);
+  this->line_box_(label, FontRole::MICRO, 19.2f);
   return label;
 }
 
@@ -391,8 +445,21 @@ lv_obj_t *SocialHomeDisplay::pill_(lv_obj_t *parent, const std::string &text, ui
   return pill;
 }
 
+lv_obj_t *SocialHomeDisplay::tag_(lv_obj_t *parent, const std::string &text, uint32_t bg, uint32_t fg) {
+  // .dash-tag at 13 px (in a message's time): bold, line-height 1.5,
+  // 8 px either side, a 1 px border in the tag's colour.
+  lv_obj_t *pill = this->pill_(parent, text, bg, fg, FontRole::TAG);
+  // The line's leading as the pill's padding: the label stays the words.
+  const LineBox box = line_box(lv_font_get_line_height(this->font_(FontRole::TAG)), this->m_.px(19.5f));
+  lv_obj_set_style_pad_top(pill, box.above, LV_PART_MAIN);
+  lv_obj_set_style_pad_bottom(pill, box.below, LV_PART_MAIN);
+  lv_obj_set_style_border_color(pill, lv_color_hex(bg), LV_PART_MAIN);
+  lv_obj_set_style_border_width(pill, 1, LV_PART_MAIN);
+  return pill;
+}
+
 lv_obj_t *SocialHomeDisplay::button_(lv_obj_t *parent, const std::string &text, bool primary, lv_event_cb_t cb,
-                                     void *user_data) {
+                                     void *user_data, FontRole font) {
   const Palette &p = this->palette_();
   lv_obj_t *button = this->row_(parent, this->m_.px(10));
   lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
@@ -400,7 +467,10 @@ lv_obj_t *SocialHomeDisplay::button_(lv_obj_t *parent, const std::string &text, 
   lv_obj_set_style_min_height(button, this->m_.px(56), LV_PART_MAIN);
   lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, LV_PART_MAIN);
   lv_obj_set_style_pad_hor(button, this->m_.px(24), LV_PART_MAIN);
-  lv_obj_set_style_pad_ver(button, this->m_.px(10), LV_PART_MAIN);
+  // The words centred in the 56 px: LVGL doesn't centre a row's content
+  // in its min height.
+  const int line = lv_font_get_line_height(this->font_(font));
+  lv_obj_set_style_pad_ver(button, std::max(this->m_.px(8), (this->m_.px(56) - line) / 2), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_PART_MAIN);
   if (primary) {
     lv_obj_set_style_bg_color(button, lv_color_hex(p.accent), LV_PART_MAIN);
@@ -410,7 +480,7 @@ lv_obj_t *SocialHomeDisplay::button_(lv_obj_t *parent, const std::string &text, 
     lv_obj_set_style_border_width(button, std::max(1, this->m_.px(2)), LV_PART_MAIN);
   }
   lv_obj_set_style_bg_color(button, lv_color_hex(primary ? p.text : p.bg), LV_STATE_PRESSED);
-  this->text_(button, text, FontRole::BODY_BOLD, primary ? p.accent_text : p.text);
+  this->text_(button, text, font, primary ? p.accent_text : p.text);
   if (cb != nullptr)
     lv_obj_add_event_cb(button, cb, LV_EVENT_CLICKED, user_data);
   return button;
@@ -516,49 +586,120 @@ lv_obj_t *SocialHomeDisplay::agenda_row_(lv_obj_t *parent, const AgendaRow &row,
   lv_obj_set_style_pad_ver(item, this->m_.px(8), LV_PART_MAIN);
   lv_obj_set_style_pad_column(item, this->m_.px(16), LV_PART_MAIN);
   lv_obj_set_style_pad_row(item, this->m_.px(8), LV_PART_MAIN);
+  // The board's 22 px on its 1.35 line (the time, the title), the room /
+  // teacher 16 px on the same 1.35.
+  const float line_css = 29.7f;
   lv_obj_t *time = this->text_(item, row.time, FontRole::BODY, style.time_ink);
   lv_obj_set_style_max_width(time, LV_PCT(100), LV_PART_MAIN);
   lv_label_set_long_mode(time, LV_LABEL_LONG_MODE_WRAP);
+  this->line_margin_(time, FontRole::BODY, line_css);
+  // .dash-row-time: at least 5.5ch, so the titles of "08:15" rows line up;
+  // the label stays the words, the rest of the cell is a margin.
+  const int body_line = lv_font_get_line_height(this->font_(FontRole::BODY));
+  const int zero = lv_font_get_glyph_width(this->font_(FontRole::BODY), '0', 0);
+  const int time_w = this->text_width_(row.time, FontRole::BODY);
+  const int time_cell = css_ch(5.5f, zero, body_line);
+  lv_obj_set_style_margin_right(time, std::max(0, time_cell - time_w), LV_PART_MAIN);
   // .dash-row-main: as wide as its words (never under 9rem, never over the
   // row), then grown into the line — so it moves under the time exactly
   // when time + words don't fit side by side. LVGL wraps a flex line by a
   // growing item's min width, so the words are measured here (with a pixel
-  // to spare, so a title that fits is never wrapped by rounding).
-  const int gap = this->m_.px(8);
+  // to spare, so a title that fits is never wrapped by rounding). Its
+  // title and tag sit 10 px apart (gap 4px 10px), the room 4 px under.
+  const int gap = this->m_.px(10);
+  const int space = lv_font_get_glyph_width(this->font_(FontRole::BODY), ' ', 0);
+  // The icon is a word of the title: the browser's emoji glyph (~1.05
+  // Roboto lines) and a space before the words.
+  const int icon = this->m_.emoji_sm();
+  const int icon_advance = body_line * 105 / 100 + space;
+  const bool tagged = row.status != Status::NONE && !row.status_label.empty();
+  // .dash-tag: 16 px bold on a 1.5 line, 8 px either side in a 1 px
+  // border; its mark (✕ / 🔁 / +) and a space before the words.
+  const int mark = this->m_.px(12);
+  const int tag_space = lv_font_get_glyph_width(this->font_(FontRole::LABEL), ' ', 0);
   int natural = this->text_width_(row.title, FontRole::BODY);
   if (!row.icon.empty())
-    natural += this->m_.emoji_sm() + gap;
-  const bool tagged = row.status != Status::NONE && !row.status_label.empty();
+    natural += icon_advance;
   if (tagged)
-    natural += gap + this->text_width_(upper(row.status_label), FontRole::LABEL) + 2 * this->m_.px(8) + 2;
+    natural += gap + this->text_width_(upper(row.status_label), FontRole::LABEL) + mark + tag_space +
+               2 * this->m_.px(8) + 2;
   if (!row.meta.empty())
     natural = std::max(natural, this->text_width_(row.meta, FontRole::SMALL));
   lv_obj_update_layout(item);
   const int room = std::max(1, static_cast<int>(lv_obj_get_content_width(item)));
   lv_obj_t *body = this->column_(item, this->m_.px(4));
-  lv_obj_set_style_min_width(body, std::min(std::max(natural + 2, this->m_.px(144)), room), LV_PART_MAIN);
+  int body_min = std::min(std::max(natural + 2, this->m_.px(144)), room);
+  // Side by side only where the browser's line fits them: its text is a
+  // little wider than the panel's (css_width), and LVGL would otherwise
+  // keep a title beside a time the tablet puts it under.
+  const int time_css = std::max(css_width(time_w, utf8_glyphs(row.time), body_line), time_cell);
+  if (!row_fits_beside(room, time_css, this->m_.px(16), body_min))
+    body_min = room;
+  lv_obj_set_style_min_width(body, body_min, LV_PART_MAIN);
   lv_obj_set_flex_grow(body, 1);
   lv_obj_t *line = this->row_(body, gap);
   lv_obj_set_flex_flow(line, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_set_flex_align(line, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
   lv_obj_set_width(line, LV_PCT(100));
   if (!row.icon.empty()) {
-    lv_obj_t *icon = this->emoji_(line, row.icon, this->m_.emoji_sm());
+    lv_obj_t *pic = this->emoji_(line, row.icon, icon);
+    lv_obj_set_style_margin_top(pic, (this->m_.px(line_css) - icon) / 2, LV_PART_MAIN);
+    lv_obj_set_style_margin_right(pic, icon_advance - icon - gap, LV_PART_MAIN);
     if (style.emoji_opa != OPA_FULL)
-      lv_obj_set_style_opa(icon, style.emoji_opa, LV_PART_MAIN);
+      lv_obj_set_style_opa(pic, style.emoji_opa, LV_PART_MAIN);
   }
   lv_obj_t *title = this->text_(line, row.title, FontRole::BODY, style.title_ink);
   lv_obj_set_style_max_width(title, LV_PCT(100), LV_PART_MAIN);
   lv_label_set_long_mode(title, LV_LABEL_LONG_MODE_WRAP);
+  this->line_margin_(title, FontRole::BODY, line_css);
   if (style.strike)
     lv_obj_set_style_text_decor(title, LV_TEXT_DECOR_STRIKETHROUGH, LV_PART_MAIN);
   if (tagged) {
     uint32_t fg = row.status == Status::CANCELLED ? p.error_text : p.text;
-    lv_obj_t *pill = this->pill_(line, upper(row.status_label), p.surface, fg, FontRole::LABEL);
+    uint32_t bg = row.status == Status::CANCELLED ? p.error_bg : p.surface;
+    lv_obj_t *pill = this->row_(line, tag_space);
+    lv_obj_set_style_bg_color(pill, lv_color_hex(bg), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(pill, this->m_.px(6), LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(pill, this->m_.px(8), LV_PART_MAIN);
     lv_obj_set_style_border_color(pill, lv_color_hex(fg), LV_PART_MAIN);
     lv_obj_set_style_border_width(pill, 1, LV_PART_MAIN);
+    const LineBox tag_line = line_box(lv_font_get_line_height(this->font_(FontRole::LABEL)), this->m_.px(24));
+    lv_obj_set_style_pad_top(pill, tag_line.above, LV_PART_MAIN);
+    lv_obj_set_style_pad_bottom(pill, tag_line.below, LV_PART_MAIN);
+    // On the title's baseline.
+    lv_obj_set_style_margin_top(pill, this->inline_top_(FontRole::BODY, line_css, FontRole::LABEL, 24.0f) - 1,
+                                LV_PART_MAIN);
+    if (row.status == Status::CANCELLED) {
+      const lv_value_precise_t m = mark;
+      const int stroke = std::max(2, this->m_.px(2));
+      lv_obj_t *cross = this->box_(pill);
+      lv_obj_set_size(cross, mark, mark);
+      lv_obj_set_size(this->poly_(cross, {{0, 0}, {m, m}}, stroke, fg), mark, mark);
+      lv_obj_set_size(this->poly_(cross, {{0, m}, {m, 0}}, stroke, fg), mark, mark);
+    } else if (row.status == Status::CHANGED) {
+      this->emoji_(pill, Emoji{"\xF0\x9F\x94\x81", "1f501"}, this->emoji_px_(FontRole::LABEL));
+    } else {
+      this->text_(pill, "+", FontRole::LABEL, fg);
+    }
+    // letter-spacing 0.03em (0.48 px) is under LVGL's whole pixel: the
+    // label keeps the room, about half of it — the hinted capitals come
+    // out narrower (CANCELLED) or wider (FÄLLT AUS) than Chromium's.
+    const std::string words_text = upper(row.status_label);
+    lv_obj_t *words = this->text_(pill, words_text, FontRole::LABEL, fg);
+    lv_obj_set_width(words, this->text_width_(words_text, FontRole::LABEL) +
+                                static_cast<int>(std::lround(utf8_glyphs(words_text) * 0.03f * 16 * this->m_.scale / 2)));
   }
   if (!row.meta.empty())
-    this->text_(body, row.meta, FontRole::SMALL, style.meta_ink);
+    this->line_margin_(this->text_(body, row.meta, FontRole::SMALL, style.meta_ink), FontRole::SMALL, 21.6f);
+  // The lines are fractional in the browser (29.7 / 21.6 px) and whole
+  // here: take what rounding added off the bottom padding, so a list of
+  // rows doesn't drift down a pixel a row.
+  const bool beside = body_min < room;
+  const float css = this->m_.scale * (29.7f * (beside ? 1 : 2) + (row.meta.empty() ? 0.0f : 21.6f));
+  const int drawn = this->m_.px(29.7f) * (beside ? 1 : 2) + (row.meta.empty() ? 0 : this->m_.px(21.6f));
+  lv_obj_set_style_pad_bottom(item, std::max(0, this->m_.px(8) - static_cast<int>(std::lround(drawn - css))),
+                              LV_PART_MAIN);
   if (show_people && !row.people.empty())
     this->people_row_(body, row.people, this->m_.px(28));
   return item;
@@ -569,10 +710,14 @@ lv_obj_t *SocialHomeDisplay::chore_row_(lv_obj_t *parent, const Chore &chore, bo
   lv_obj_t *item = this->row_(parent, this->m_.px(12));
   lv_obj_set_width(item, LV_PCT(100));
   int mark = this->m_.px(22);
+  // .dash-glyph: a 1.4em cell (of the board's 22 px) with the mark centred.
+  lv_obj_t *cell = this->row_(item, 0);
+  lv_obj_set_width(cell, this->m_.px(1.4f * 22));
+  lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   if (chore.state == ChoreState::OVERDUE) {
-    this->emoji_(item, Emoji{"\xE2\x9A\xA0", "26a0"}, mark);
+    this->emoji_(cell, Emoji{"\xE2\x9A\xA0", "26a0"}, mark);
   } else {
-    lv_obj_t *box = this->box_(item);
+    lv_obj_t *box = this->box_(cell);
     lv_obj_set_size(box, mark, mark);
     if (chore.state == ChoreState::DONE) {
       this->check_mark_(box, mark, p.text, std::max(2, this->m_.px(3)));
@@ -597,7 +742,13 @@ lv_obj_t *SocialHomeDisplay::chore_row_(lv_obj_t *parent, const Chore &chore, bo
   if (!after.empty()) {
     const uint32_t ink = !chore.late.empty() ? p.error_text : p.muted;
     lv_obj_t *tail = this->text_(body, "\xC2\xB7 " + after, FontRole::BODY, ink);
-    lv_obj_set_style_margin_left(tail, lv_font_get_glyph_width(this->font_(FontRole::BODY), ' ', 0), LV_PART_MAIN);
+    // A space after the title — and what the browser's wider title adds
+    // (words gain about half what digits do from the fractional advances).
+    const int body_line = lv_font_get_line_height(this->font_(FontRole::BODY));
+    const int title_w = this->text_width_(chore.title, FontRole::BODY);
+    const int wider = (css_width(title_w, utf8_glyphs(chore.title), body_line) - title_w) / 2;
+    lv_obj_set_style_margin_left(tail, lv_font_get_glyph_width(this->font_(FontRole::BODY), ' ', 0) + wider,
+                                 LV_PART_MAIN);
     lv_obj_set_style_max_width(tail, LV_PCT(100), LV_PART_MAIN);
     lv_label_set_long_mode(tail, LV_LABEL_LONG_MODE_WRAP);
   }
@@ -621,21 +772,42 @@ lv_obj_t *SocialHomeDisplay::message_row_(lv_obj_t *parent, const Message &messa
   lv_obj_set_style_border_color(item, lv_color_hex(p.accent), LV_PART_MAIN);
   lv_obj_set_style_border_opa(item, message.is_new ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
   this->avatar_(item, message.person, this->m_.avatar_sm());
-  lv_obj_t *line = this->row_(item, this->m_.px(8));
+  // .dash-msg-body: the text (flex 1 1 12rem, line-height 1.3) and the
+  // time 12 px after it, on the text's first baseline.
+  const float text_line = 28.6f;
+  lv_obj_t *body = this->row_(item, this->m_.px(12));
+  lv_obj_set_flex_grow(body, 1);
+  lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+  lv_obj_t *line = this->row_(body, this->m_.px(8));
   lv_obj_set_flex_grow(line, 1);
+  lv_obj_set_flex_align(line, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
   if (!message.icon.empty())
     this->emoji_(line, message.icon, this->m_.emoji_sm());
   lv_obj_t *text = this->rich_(line, message.text, font, p.text);
-  this->line_box_(text, font, 28.6f);  // .dash-msg-text: line-height 1.3
+  this->line_box_(text, font, text_line);
   lv_obj_set_width(text, 0);
   lv_obj_set_flex_grow(text, 1);
-  lv_obj_t *meta = this->row_(item, this->m_.px(8));
+  // .dash-msg-when: 16 px, the NEW tag (13 px) 8 px before the time, the
+  // two centred on each other.
+  lv_obj_t *meta = this->row_(body, this->m_.px(8));
   if (message.is_new)
-    this->pill_(meta, upper(this->str_("new")), p.accent, p.accent_text, FontRole::LABEL);
+    this->tag_(meta, upper(this->str_("new")), p.accent, p.accent_text);
   // A new message's "11 min ago" is no longer true offline (the browser's
   // data-rel); an older one shows its time of day.
-  if (show_time && !(message.is_new && this->offline_))
+  if (show_time && message.is_new && this->offline_) {
+    // The browser hides it (visibility: hidden) but keeps its room, so
+    // the NEW tag stays where it was.
+    lv_obj_t *room = this->box_(meta);
+    lv_obj_set_size(room, this->text_width_(message.when, FontRole::SMALL),
+                    lv_font_get_line_height(this->font_(FontRole::SMALL)));
+  } else if (show_time) {
     this->text_(meta, message.when, FontRole::SMALL, p.muted);
+  }
+  lv_obj_update_layout(meta);
+  const int small_line = lv_font_get_line_height(this->font_(FontRole::SMALL));
+  const int time_top = this->inline_top_(font, text_line, FontRole::SMALL);
+  lv_obj_set_style_margin_top(meta, time_top - (static_cast<int>(lv_obj_get_height(meta)) - small_line) / 2,
+                              LV_PART_MAIN);
   return item;
 }
 
@@ -821,7 +993,8 @@ void SocialHomeDisplay::build_rail_(lv_obj_t *parent) {
 void SocialHomeDisplay::build_tabs_(lv_obj_t *parent) {
   const Palette &p = this->palette_();
   const Header &h = this->board_->header;
-  lv_obj_t *bar = this->row_(parent, 0);
+  // .dash-tab-list: the tabs 8 px apart.
+  lv_obj_t *bar = this->row_(parent, this->m_.px(8));
   lv_obj_set_width(bar, LV_PCT(100));
   lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
   lv_obj_set_style_border_side(bar, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN);
@@ -842,7 +1015,8 @@ void SocialHomeDisplay::build_tabs_(lv_obj_t *parent) {
     lv_obj_set_style_border_width(t, this->m_.px(4), LV_PART_MAIN);
     lv_obj_set_style_border_color(t, lv_color_hex(p.accent), LV_PART_MAIN);
     lv_obj_set_style_border_opa(t, tab.current ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
-    this->text_(t, tab.label, FontRole::BODY_BOLD, tab.current ? p.text : p.muted);
+    // .dash-tab: 20 px, weight 600 (bold in Roboto's two weights).
+    this->text_(t, tab.label, FontRole::MEDIUM_BOLD, tab.current ? p.text : p.muted);
     // The browser's .dash-tab-badge: the count of new messages (< 15 min,
     // never "unread") as an accent pill that grows with the number — not on
     // the tab being shown.
@@ -855,7 +1029,7 @@ void SocialHomeDisplay::build_tabs_(lv_obj_t *parent) {
       lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, LV_PART_MAIN);
       lv_obj_set_style_bg_color(badge, lv_color_hex(p.accent), LV_PART_MAIN);
       lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, LV_PART_MAIN);
-      this->text_(badge, std::to_string(tab.badge), FontRole::LABEL, p.accent_text);
+      this->text_(badge, std::to_string(tab.badge), FontRole::TAG, p.accent_text);  // 13 px bold
     }
     lv_obj_add_flag(t, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_user_data(t, this);
@@ -934,15 +1108,20 @@ void SocialHomeDisplay::build_alerts_(lv_obj_t *parent, const std::vector<Mentio
     this->avatar_(inner, alert.person, this->m_.avatar_sm());
     lv_obj_t *body = this->column_(inner, this->m_.px(4));
     lv_obj_set_flex_grow(body, 1);
+    // .dash-alert-head: 16 px on the board's 1.35 line, 10 px apart; the
+    // card's items (face, words, Got it) centred on one another.
+    lv_obj_set_flex_align(inner, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_t *head = this->row_(body, this->m_.px(10));
-    this->caps_(head, alert.label, p.accent);
-    this->text_(head, alert.name, FontRole::LABEL, p.text);
+    this->line_margin_(this->caps_(head, alert.label, p.accent), FontRole::LABEL, 21.6f);
+    this->line_margin_(this->text_(head, alert.name, FontRole::LABEL, p.text), FontRole::LABEL, 21.6f);
     if (!this->offline_)  // "3 min ago" is no longer true offline
-      this->text_(head, alert.when, FontRole::SMALL, p.muted);
-    this->rich_(body, alert.text, FontRole::BODY, p.text);
+      this->line_margin_(this->text_(head, alert.when, FontRole::SMALL, p.muted), FontRole::SMALL, 21.6f);
+    // .dash-alert-text: 24 px, line-height 1.3.
+    this->line_box_(this->rich_(body, alert.text, FontRole::MESSAGE, p.text), FontRole::MESSAGE, 31.2f);
     if (alert.ack.has_value()) {
+      // .dash-ack: 20 px bold.
       lv_obj_t *button = this->button_(inner, this->str_("got_it"), true, SocialHomeDisplay::on_ack_,
-                                       this->payload_(alert.key));
+                                       this->payload_(alert.key), FontRole::MEDIUM_BOLD);
       lv_obj_set_user_data(button, this);
       lv_obj_t *check = this->check_mark_(button, this->m_.px(20), p.accent_text, std::max(2, this->m_.px(3)));
       lv_obj_move_to_index(check, 0);

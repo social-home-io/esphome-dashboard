@@ -448,18 +448,24 @@ void SocialHomeDisplay::build_lock_(lv_obj_t *screen) {
   lv_obj_set_flex_align(col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_center(col);
 
-  // .dash-lock-household: 24 px muted (the panel's nearest: 22 px).
-  lv_obj_t *household = this->text_(col, lock.household, FontRole::BODY, p.muted);
+  // .dash-lock-household: 24 px muted on the body's 1.5 line.
+  lv_obj_t *household = this->text_(col, lock.household, FontRole::MESSAGE, p.muted);
+  this->line_margin_(household, FontRole::MESSAGE, 36.0f);
   lv_obj_set_style_text_align(household, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
   lv_obj_set_style_max_width(household, LV_PCT(100), LV_PART_MAIN);
   lv_label_set_long_mode(household, LV_LABEL_LONG_MODE_WRAP);
   // .dash-lock-time: 160 px light; 96 px with the pad open.
   lv_obj_t *clock = this->clock_label_(col, open ? FontRole::LOCK : FontRole::LOCK_TIME, p.text);
-  // Roboto's line box is taller than the browser's `line-height: 1`.
-  lv_obj_set_style_margin_top(clock, -this->m_.px(open ? 7 : 13), LV_PART_MAIN);
-  // .dash-lock-date: 32 px (24 px open), full text colour.
-  lv_obj_t *date = this->text_(col, lock.clock.date, open ? FontRole::BODY : FontRole::TEXT_LARGE, p.text);
-  lv_obj_set_style_pad_bottom(date, this->m_.px(open ? 27 : 48), LV_PART_MAIN);
+  // `line-height: 1`: Roboto's own line is taller and overflows it evenly.
+  this->line_margin_(clock, open ? FontRole::LOCK : FontRole::LOCK_TIME, open ? 96.0f : 160.0f);
+  // .dash-lock-date: 32 px (24 px open) on the 1.5 line, 8 px under the
+  // clock and 40 px (20 px open) over what follows.
+  const FontRole date_font = open ? FontRole::MESSAGE : FontRole::TEXT_LARGE;
+  lv_obj_t *date = this->text_(col, lock.clock.date, date_font, p.text);
+  this->line_margin_(date, date_font, open ? 36.0f : 48.0f);
+  lv_obj_set_style_margin_top(date, lv_obj_get_style_margin_top(date, LV_PART_MAIN) + this->m_.px(8), LV_PART_MAIN);
+  lv_obj_set_style_margin_bottom(date, lv_obj_get_style_margin_bottom(date, LV_PART_MAIN) + this->m_.px(open ? 20 : 40),
+                                 LV_PART_MAIN);
 
   if (!open) {
     // .dash-lock-summary: a 64 px pill "🔒 PIN", surface + border.
@@ -489,7 +495,9 @@ void SocialHomeDisplay::build_lock_(lv_obj_t *screen) {
   lv_obj_set_flex_align(form, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   if (this->pin_error_ && !this->pin_message_.empty()) {
     // .dash-error: error colours, 12 px radius, centred; the count bold.
-    lv_obj_t *alert = this->column_(form, this->m_.px(10));
+    // .dash-error: 18 px on the page's 1.5 line; "Tries left" 4 px under
+    // "Wrong PIN" (.dash-pin-tries). Each line as wide as its words.
+    lv_obj_t *alert = this->column_(form, this->m_.px(4));
     lv_obj_set_width(alert, LV_PCT(100));
     lv_obj_set_flex_align(alert, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_ver(alert, this->m_.px(12), LV_PART_MAIN);
@@ -501,12 +509,20 @@ void SocialHomeDisplay::build_lock_(lv_obj_t *screen) {
       const std::string &line = k == 0 ? this->pin_message_ : this->pin_detail_;
       if (line.empty())
         continue;
-      lv_obj_t *label = this->wrap_(alert, line, k == 0 ? FontRole::TEXT : FontRole::TEXT_BOLD, p.error_text);
+      const FontRole font = k == 0 ? FontRole::TEXT : FontRole::TEXT_BOLD;
+      lv_obj_t *label = this->text_(alert, line, font, p.error_text);
+      lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_WRAP);
       lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+      this->line_margin_(label, font, 27.0f);
+      lv_point_t extent;
+      lv_text_get_size(&extent, line.c_str(), this->font_(font), 0, lv_obj_get_style_text_line_space(label, LV_PART_MAIN),
+                       width - 2 * this->m_.px(16), LV_TEXT_FLAG_NONE);
+      lv_obj_set_width(label, extent.x);
     }
   }
-  // "Enter PIN" (.dash-field span: 600 weight).
-  this->text_(form, lock_str(lock.enter_pin, "enter_pin"), FontRole::TEXT_BOLD, p.text);
+  // "Enter PIN" (.dash-field span: 600 weight, the body's 1.5 line).
+  this->line_margin_(this->text_(form, lock_str(lock.enter_pin, "enter_pin"), FontRole::TEXT_BOLD, p.text),
+                     FontRole::TEXT_BOLD, 27.0f);
   // .dash-pin-dots: 18 px dots, 14 px apart, at least 20 px tall.
   this->pin_dots_ = this->row_(form, this->m_.px(14));
   lv_obj_set_style_min_height(this->pin_dots_, this->m_.px(20), LV_PART_MAIN);
@@ -562,12 +578,19 @@ void SocialHomeDisplay::build_lock_(lv_obj_t *screen) {
       lv_obj_center(label);
     }
   }
-  // .dash-lock-forgot: 16 px muted, centred under the pad.
-  lv_obj_t *hint = this->wrap_(col, lock_str(lock.forgot_pin, "pin_forgot"), FontRole::SMALL, p.muted);
-  lv_obj_set_width(hint, width);
+  // .dash-lock-forgot: 16 px muted, line-height 1.4, centred 12 px under
+  // the pad (short screens), at most 20rem — as wide as its longest line.
+  const std::string forgot = lock_str(lock.forgot_pin, "pin_forgot");
+  lv_obj_t *hint = this->text_(col, forgot, FontRole::SMALL, p.muted);
   lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-  lv_obj_set_style_pad_top(hint, this->m_.px(12), LV_PART_MAIN);
-  lv_obj_set_style_text_line_space(hint, this->m_.px(4), LV_PART_MAIN);
+  lv_label_set_long_mode(hint, LV_LABEL_LONG_MODE_WRAP);
+  const LineBox hint_line = line_box(lv_font_get_line_height(this->font_(FontRole::SMALL)), this->m_.px(22.4f));
+  lv_obj_set_style_text_line_space(hint, hint_line.between, LV_PART_MAIN);
+  lv_point_t extent;
+  lv_text_get_size(&extent, forgot.c_str(), this->font_(FontRole::SMALL), 0, hint_line.between, width,
+                   LV_TEXT_FLAG_NONE);
+  lv_obj_set_width(hint, std::min<int>(width, extent.x));
+  lv_obj_set_style_margin_top(hint, this->m_.px(12) + hint_line.above, LV_PART_MAIN);
   this->update_pin_pad_();
 }
 

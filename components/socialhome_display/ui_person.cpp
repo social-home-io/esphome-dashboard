@@ -28,6 +28,14 @@ struct Dial {
   uint32_t tick_minor{0};
 };
 
+/// LVGL's flex lays a content-sized object's children out in the size its
+/// children need, before a min width / height grows it: fix the grown size
+/// so they centre in it, as the browser's flex does.
+void fix_size(lv_obj_t *obj) {
+  lv_obj_update_layout(obj);
+  lv_obj_set_size(obj, lv_obj_get_width(obj), lv_obj_get_height(obj));
+}
+
 void free_dial(lv_event_t *event) { delete static_cast<Dial *>(lv_event_get_user_data(event)); }
 
 /// LV_EVENT_REFR_EXT_DRAW_SIZE: the object draws (and lets its children
@@ -155,17 +163,30 @@ lv_obj_t *SocialHomeDisplay::build_tile_(lv_obj_t *parent, const Tile &tile, int
   const Palette &p = this->palette_();
   // Past and cancelled tiles fade only their picture (tile_style).
   const TileStyle style = tile_style(tile, p);
-  lv_obj_t *t = this->column_(parent, this->m_.px(2));
+  // .dash-pv-tile: 96 px to 10rem wide, at least 72 px tall, 8 px / 4 px
+  // padding (10 px either side) inside a 2 px border, the picture 4 px
+  // over the caption.
+  lv_obj_t *t = this->column_(parent, this->m_.px(4));
   lv_obj_set_flex_align(t, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_min_width(t, size, LV_PART_MAIN);
+  lv_obj_set_style_min_width(t, this->m_.px(96), LV_PART_MAIN);
+  lv_obj_set_style_max_width(t, this->m_.px(160), LV_PART_MAIN);
+  lv_obj_set_style_min_height(t, this->m_.px(72), LV_PART_MAIN);
   lv_obj_set_style_pad_hor(t, this->m_.px(10), LV_PART_MAIN);
-  lv_obj_set_style_pad_ver(t, this->m_.px(6), LV_PART_MAIN);
+  lv_obj_set_style_pad_top(t, this->m_.px(8), LV_PART_MAIN);
+  lv_obj_set_style_pad_bottom(t, this->m_.px(4), LV_PART_MAIN);
   lv_obj_set_style_bg_color(t, lv_color_hex(p.bg), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(t, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_radius(t, this->m_.px(12), LV_PART_MAIN);
-  // The current tile is live data: grey, its picture faded, offline.
-  lv_obj_set_style_border_color(t, lv_color_hex(tile.current ? this->live_().accent : p.border), LV_PART_MAIN);
-  lv_obj_set_style_border_width(t, tile.current ? this->m_.px(3) : std::max(1, this->m_.px(2)), LV_PART_MAIN);
+  lv_obj_set_style_radius(t, this->m_.px(18), LV_PART_MAIN);
+  const int border = std::max(1, this->m_.px(2));
+  lv_obj_set_style_border_color(t, lv_color_hex(p.border), LV_PART_MAIN);
+  lv_obj_set_style_border_width(t, border, LV_PART_MAIN);
+  if (tile.current) {
+    // .dash-pv-current: a 6 px accent ring 3 px outside the tile — live
+    // data, grey offline.
+    lv_obj_set_style_outline_color(t, lv_color_hex(this->live_().accent), LV_PART_MAIN);
+    lv_obj_set_style_outline_width(t, this->m_.px(6), LV_PART_MAIN);
+    lv_obj_set_style_outline_pad(t, this->m_.px(3), LV_PART_MAIN);
+  }
   // The colour strip along the bottom, as on the tablet: a hard shadow
   // under the tile. LVGL draws no shadow at all with a width of 0, so the
   // narrowest blur (1 px) keeps the edge sharp.
@@ -175,19 +196,35 @@ lv_obj_t *SocialHomeDisplay::build_tile_(lv_obj_t *parent, const Tile &tile, int
   lv_obj_set_style_shadow_spread(t, 0, LV_PART_MAIN);
   lv_obj_set_style_shadow_opa(t, LV_OPA_COVER, LV_PART_MAIN);
   if (!tile.icon.empty()) {
-    lv_obj_t *icon = this->emoji_(t, tile.icon, size * 52 / 100);
+    lv_obj_t *icon = this->emoji_(t, tile.icon, size);
     if (style.emoji_opa != OPA_FULL)
       lv_obj_set_style_opa(icon, style.emoji_opa, LV_PART_MAIN);
     if (tile.current)
       this->live_picture_(icon);
   }
   if (!tile.caption.empty()) {
-    lv_obj_t *caption = this->inline_(t, tile.caption, FontRole::SMALL, style.caption_ink, size * 2);
+    // .dash-pv-cap: 15 px, line-height 1.3, one line ending in "…".
+    lv_obj_t *caption = this->inline_(t, tile.caption, FontRole::CAPTION, style.caption_ink,
+                                      this->m_.px(160) - 2 * this->m_.px(10) - 2 * border);
+    this->line_box_(caption, FontRole::CAPTION, 19.5f);
     if (style.strike) {
       for (uint32_t k = 0; k < lv_obj_get_child_count(caption); k++)
         lv_obj_set_style_text_decor(lv_obj_get_child(caption, k), LV_TEXT_DECOR_STRIKETHROUGH, LV_PART_MAIN);
     }
   }
+  // Content-sized, but LVGL's flex centres the children in the size they
+  // need before min-width / min-height grow the tile: size it here.
+  int content_w = tile.icon.empty() ? 0 : size;
+  int content_h = tile.icon.empty() ? 0 : size;
+  if (!tile.caption.empty()) {
+    lv_obj_t *caption = lv_obj_get_child(t, -1);
+    lv_obj_update_layout(caption);
+    content_w = std::max<int>(content_w, lv_obj_get_width(caption));
+    content_h += (content_h > 0 ? this->m_.px(4) : 0) + this->m_.px(19.5f);
+  }
+  lv_obj_set_size(t,
+                  std::clamp(content_w + 2 * this->m_.px(10) + 2 * border, this->m_.px(96), this->m_.px(160)),
+                  std::max(this->m_.px(72), content_h + this->m_.px(8) + this->m_.px(4) + 2 * border));
   return t;
 }
 
@@ -199,7 +236,9 @@ void SocialHomeDisplay::build_person_(lv_obj_t *parent) {
   if (picture) {
     // The picture view is one block under the offline note (the tablet's
     // .dash-pv): the dial floats at its top end, not over the note.
-    lv_obj_t *pv = this->column_(parent, lv_obj_get_style_pad_row(parent, LV_PART_MAIN));
+    // .dash-pv-head's 16 px rows (the browser's .dash-pv gap is 20 px
+    // below the head).
+    lv_obj_t *pv = this->column_(parent, this->m_.px(16));
     lv_obj_set_width(pv, LV_PCT(100));
     allow_overhang(pv, this->m_.px(12));
     parent = pv;
@@ -207,16 +246,22 @@ void SocialHomeDisplay::build_person_(lv_obj_t *parent) {
 
   lv_obj_t *head = this->row_(parent, this->m_.px(20));
   lv_obj_set_width(head, LV_PCT(100));
+  // The face 24 px from the top, as the browser's content padding.
+  lv_obj_set_style_pad_top(head, this->m_.px(8), LV_PART_MAIN);
   lv_obj_set_flex_align(head, LV_FLEX_ALIGN_START, picture ? LV_FLEX_ALIGN_START : LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_START);
   lv_obj_add_flag(head, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
   lv_obj_t *who_row = this->row_(head, this->m_.px(20));
   lv_obj_add_flag(who_row, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
   lv_obj_set_flex_grow(who_row, 1);
-  // Room for the avatar's ring: the scrolling column clips at its content box.
-  lv_obj_set_style_pad_all(who_row, this->m_.px(10), LV_PART_MAIN);
+  // The face sits at the column's start and the head ends under it, as
+  // the browser's .dash-person-head / .dash-pv-who; the picture view's ring
+  // overhangs (the rows let it out).
   lv_obj_t *avatar = this->avatar_of_(who_row, who.initials, who.avatar, who.color, who.ink, this->m_.px(88));
   if (picture) {
+    // The ring (4 px gap + 5 px) overhangs the face's row and the head.
+    allow_overhang(who_row, this->m_.px(10));
+    allow_overhang(head, this->m_.px(10));
     lv_obj_set_style_outline_color(avatar, lv_color_hex(p.accent), LV_PART_MAIN);
     lv_obj_set_style_outline_width(avatar, this->m_.px(5), LV_PART_MAIN);
     lv_obj_set_style_outline_pad(avatar, this->m_.px(3), LV_PART_MAIN);
@@ -239,18 +284,27 @@ void SocialHomeDisplay::build_person_(lv_obj_t *parent) {
     this->long_press_settings_(clock);
   } else {
     if (who.where.has_value()) {
-      // Where they are is live data: muted words, faded icon offline.
-      lv_obj_t *where = this->row_(head, this->m_.px(6));
-      this->live_picture_(this->emoji_(where, who.where->icon, this->m_.emoji_sm()));
-      this->text_(where, who.where->label, FontRole::LARGE, this->live_().text);
+      // Where they are is live data: muted words, faded icon offline
+      // (.dash-person-where: the board's 22 px, 8 px after the icon).
+      lv_obj_t *where = this->row_(head, this->m_.px(8));
+      this->live_picture_(this->emoji_(where, who.where->icon, this->emoji_px_(FontRole::BODY)));
+      this->text_(where, who.where->label, FontRole::BODY, this->live_().text);
     }
-    this->clock_label_(head, FontRole::DISPLAY, p.text);
+    // .dash-clock-sm: 4rem light, letter-spacing -0.02em (1.28 px) — 2 px
+    // here, as the hinted digits are each a little wider than Chromium's.
+    lv_obj_t *clock = this->clock_label_(head, FontRole::CLOCK_SMALL, p.text);
+    lv_obj_set_style_text_letter_space(clock, -std::max(1, this->m_.px(2)), LV_PART_MAIN);
   }
 
   if (picture) {
     this->build_picture_(parent);
   } else {
+    // .dash-for-you: 20 px over and under the messages for this person.
+    const uint32_t before = lv_obj_get_child_count(parent);
     this->build_alerts_(parent, b.mentions);
+    if (lv_obj_get_child_count(parent) > before)
+      lv_obj_set_style_margin_top(lv_obj_get_child(parent, static_cast<int32_t>(before)),
+                                  this->m_.px(20) - lv_obj_get_style_pad_row(parent, LV_PART_MAIN), LV_PART_MAIN);
     this->build_reader_(parent);
   }
 }
@@ -267,48 +321,85 @@ void SocialHomeDisplay::build_reader_(lv_obj_t *parent) {
   const int gap = this->m_.gap();
 
   if (r.now.has_value() || r.next.has_value()) {
-    lv_obj_t *row = this->row_(parent, gap);
+    // .dash-nownext: a grid of cards at least 16rem wide, 16 px apart.
+    const int nn_gap = this->m_.px(16);
+    lv_obj_t *row = this->row_(parent, nn_gap);
     lv_obj_set_width(row, LV_PCT(100));
+    lv_obj_set_style_margin_top(row, this->m_.px(20) - lv_obj_get_style_pad_row(parent, LV_PART_MAIN), LV_PART_MAIN);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     const int n = (r.now.has_value() ? 1 : 0) + (r.next.has_value() ? 1 : 0);
-    const int w = (width - gap * (n - 1)) / n;
+    const int w = (width - nn_gap * (n - 1)) / n;
+    // .dash-nn: 14 px / 20 px padding, a 1 px border with the colour as an
+    // 8 px start bar; NOW gets a 3 px accent ring inside (box-shadow inset).
     auto shell = [&](Color color, bool now) {
       const uint32_t frame = now ? live.mark(color.or_else(p.accent)) : color.or_else(p.accent);
       lv_obj_t *card = this->card_(row);
       lv_obj_set_width(card, w);
-      lv_obj_set_style_pad_row(card, this->m_.px(6), LV_PART_MAIN);
+      lv_obj_set_style_pad_row(card, 0, LV_PART_MAIN);
+      lv_obj_set_style_pad_ver(card, this->m_.px(14), LV_PART_MAIN);
+      lv_obj_set_style_pad_hor(card, this->m_.px(20), LV_PART_MAIN);
       lv_obj_set_style_border_side(card, LV_BORDER_SIDE_LEFT, LV_PART_MAIN);
       lv_obj_set_style_border_width(card, this->m_.px(8), LV_PART_MAIN);
       lv_obj_set_style_border_color(card, lv_color_hex(frame), LV_PART_MAIN);
       if (now) {
-        lv_obj_set_style_outline_color(card, lv_color_hex(frame), LV_PART_MAIN);
+        lv_obj_set_style_outline_color(card, lv_color_hex(live.mark(p.accent)), LV_PART_MAIN);
         lv_obj_set_style_outline_width(card, this->m_.px(3), LV_PART_MAIN);
+        lv_obj_set_style_outline_pad(card, -this->m_.px(3), LV_PART_MAIN);
       }
       return card;
     };
+    // The NOW / NEXT label (.dash-label, 8 px under it), the title line
+    // (.dash-nn-title: 28 px bold, line-height 1.25, with the 20 px room
+    // after it on one baseline) and the time (.dash-nn-when: the board's
+    // 22 px on its 1.35 line, 6 px under the title).
+    const float title_line = 35.0f;
+    auto fill = [&](lv_obj_t *card, const std::string &label, const Emoji &icon, const std::string &title,
+                    const std::string &meta, uint32_t ink, bool live_icon) {
+      lv_obj_t *head = this->caps_(card, label, p.muted);
+      this->line_box_(head, FontRole::LABEL, 20.8f);
+      lv_obj_set_style_margin_bottom(head, this->m_.px(8), LV_PART_MAIN);
+      const int space = lv_font_get_glyph_width(this->font_(FontRole::HEADING), ' ', 0);
+      lv_obj_t *line = this->row_(card, space);
+      lv_obj_set_width(line, LV_PCT(100));
+      lv_obj_set_flex_flow(line, LV_FLEX_FLOW_ROW_WRAP);
+      lv_obj_set_flex_align(line, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+      if (!icon.empty()) {
+        const int size = this->emoji_px_(FontRole::HEADING);
+        lv_obj_t *pic = this->emoji_(line, icon, size);
+        lv_obj_set_style_margin_top(pic, (this->m_.px(title_line) - size) / 2, LV_PART_MAIN);
+        // The browser's emoji glyph advances ~1.23 em (about 1.05 Roboto
+        // lines), wider than the picture.
+        const int advance = lv_font_get_line_height(this->font_(FontRole::HEADING)) * 105 / 100;
+        lv_obj_set_style_margin_right(pic, std::max(0, advance - size), LV_PART_MAIN);
+        if (live_icon)
+          this->live_picture_(pic);
+      }
+      lv_obj_t *t = this->text_(line, title, FontRole::HEADING, ink);
+      lv_obj_set_style_max_width(t, LV_PCT(100), LV_PART_MAIN);
+      lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_WRAP);
+      this->line_box_(t, FontRole::HEADING, title_line);
+      if (!meta.empty()) {
+        lv_obj_t *m = this->text_(line, "\xC2\xB7 " + meta, FontRole::MEDIUM, p.muted);
+        lv_obj_set_style_margin_top(m, this->inline_top_(FontRole::HEADING, title_line, FontRole::MEDIUM),
+                                    LV_PART_MAIN);
+      }
+    };
+    auto when = [&](lv_obj_t *card, const std::string &text) {
+      lv_obj_t *label = this->text_(card, text, FontRole::BODY, p.muted);
+      this->line_margin_(label, FontRole::BODY, 29.7f);
+      lv_obj_set_style_margin_top(label, this->m_.px(6), LV_PART_MAIN);
+    };
     if (r.now.has_value()) {
       lv_obj_t *card = shell(r.now->color, true);
-      this->caps_(card, r.now->label, p.muted);
-      lv_obj_t *line = this->row_(card, this->m_.px(10));
-      if (!r.now->icon.empty())
-        this->live_picture_(this->emoji_(line, r.now->icon, this->m_.emoji_md()));
-      this->text_(line, r.now->title, FontRole::TITLE, live.text);
-      if (!r.now->meta.empty())
-        this->text_(line, "\xC2\xB7 " + r.now->meta, FontRole::BODY, p.muted);
-      this->text_(card, r.now->until, FontRole::LARGE, p.muted);
+      fill(card, r.now->label, r.now->icon, r.now->title, r.now->meta, live.text, true);
+      when(card, r.now->until);
     }
     if (r.next.has_value()) {
       lv_obj_t *card = shell(r.next->color, false);
-      this->caps_(card, r.next->label, p.muted);
-      lv_obj_t *line = this->row_(card, this->m_.px(10));
-      if (!r.next->icon.empty())
-        this->emoji_(line, r.next->icon, this->m_.emoji_md());
-      this->text_(line, r.next->title, FontRole::TITLE, p.text);
-      if (!r.next->meta.empty())
-        this->text_(line, "\xC2\xB7 " + r.next->meta, FontRole::BODY, p.muted);
+      fill(card, r.next->label, r.next->icon, r.next->title, r.next->meta, p.text, false);
       // "· in 34 min" is no longer true offline (the browser's data-rel).
       const bool rel = !r.next->rel.empty() && !live.stale;
-      this->text_(card, rel ? r.next->time + " \xC2\xB7 " + r.next->rel : r.next->time, FontRole::LARGE, p.muted);
+      when(card, rel ? r.next->time + " \xC2\xB7 " + r.next->rel : r.next->time);
     }
   }
 
@@ -316,18 +407,32 @@ void SocialHomeDisplay::build_reader_(lv_obj_t *parent) {
   if (cols == 0)
     return;
   const int w = (width - gap * (cols - 1)) / cols;
+  // .dash-columns: 20 px under NOW / NEXT.
   lv_obj_t *row = this->row_(parent, gap);
   lv_obj_set_width(row, LV_PCT(100));
   lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-  if (r.school.has_value()) {
-    lv_obj_t *card = this->section_card_(row, r.school->label);
+  lv_obj_set_style_margin_top(row, this->m_.px(20) - lv_obj_get_style_pad_row(parent, LV_PART_MAIN), LV_PART_MAIN);
+  // .dash-col: its label (line-height 1.3) 8 px over the list, whose rows
+  // are 6 px apart (.dash-agenda; the chores 10 px, .dash-chores).
+  auto column = [&](const std::string &label, int list_gap) {
+    lv_obj_t *card = this->section_card_(row, label);
     lv_obj_set_width(card, w);
+    lv_obj_set_style_pad_row(card, list_gap, LV_PART_MAIN);
+    if (!label.empty()) {
+      lv_obj_t *head = lv_obj_get_child(card, 0);
+      this->line_margin_(head, FontRole::LABEL, 20.8f);
+      lv_obj_set_style_margin_bottom(head, lv_obj_get_style_margin_bottom(head, LV_PART_MAIN) + this->m_.px(8) - list_gap,
+                                     LV_PART_MAIN);
+    }
+    return card;
+  };
+  if (r.school.has_value()) {
+    lv_obj_t *card = column(r.school->label, this->m_.px(6));
     for (const auto &item : r.school->rows)
       this->agenda_row_(card, item, false);
   }
   if (r.day.has_value()) {
-    lv_obj_t *card = this->section_card_(row, r.day->label);
-    lv_obj_set_width(card, w);
+    lv_obj_t *card = column(r.day->label, this->m_.px(6));
     for (const auto &item : r.day->rows)
       this->agenda_row_(card, item, false);
     if (r.day->rows.empty() && !r.day->empty.empty()) {
@@ -337,15 +442,21 @@ void SocialHomeDisplay::build_reader_(lv_obj_t *parent) {
       this->text_(line, r.day->empty, FontRole::BODY, p.muted);
     }
     if (r.day->tomorrow.has_value()) {
+      // h3.dash-sublabel: 16 px under the list, 8 px over the next.
       lv_obj_t *label = this->caps_(card, r.day->tomorrow->label, p.muted);
-      lv_obj_set_style_pad_top(label, this->m_.px(8), LV_PART_MAIN);
+      this->line_margin_(label, FontRole::LABEL, 20.8f);
+      const int list_gap = lv_obj_get_style_pad_row(card, LV_PART_MAIN);
+      lv_obj_set_style_margin_top(label, lv_obj_get_style_margin_top(label, LV_PART_MAIN) + this->m_.px(16) - list_gap,
+                                  LV_PART_MAIN);
+      lv_obj_set_style_margin_bottom(label,
+                                     lv_obj_get_style_margin_bottom(label, LV_PART_MAIN) + this->m_.px(8) - list_gap,
+                                     LV_PART_MAIN);
       for (const auto &item : r.day->tomorrow->rows)
         this->agenda_row_(card, item, false);
     }
   }
   if (r.chores.has_value()) {
-    lv_obj_t *card = this->section_card_(row, r.chores->label);
-    lv_obj_set_width(card, w);
+    lv_obj_t *card = column(r.chores->label, this->m_.px(10));
     for (const auto &chore : r.chores->items)
       this->chore_row_(card, chore, false);
   }
@@ -383,13 +494,20 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_color(card, lv_color_hex(p.accent), LV_PART_MAIN);
     lv_obj_set_style_border_width(card, this->m_.px(3), LV_PART_MAIN);
-    lv_obj_set_style_radius(card, this->m_.px(20), LV_PART_MAIN);
-    lv_obj_set_style_pad_all(card, this->m_.px(14), LV_PART_MAIN);
-    lv_obj_t *who = this->column_(card, this->m_.px(6));
+    // .dash-pv-mention: 12 px / 10 px padding (16 px / 12 px either side)
+    // in a 3 px accent ring, 32 px round.
+    lv_obj_set_style_radius(card, this->m_.px(32), LV_PART_MAIN);
+    lv_obj_set_style_pad_top(card, this->m_.px(12), LV_PART_MAIN);
+    lv_obj_set_style_pad_bottom(card, this->m_.px(10), LV_PART_MAIN);
+    lv_obj_set_style_pad_left(card, this->m_.px(16), LV_PART_MAIN);
+    lv_obj_set_style_pad_right(card, this->m_.px(12), LV_PART_MAIN);
+    // .dash-pv-msg: the face 10 px over its caption, at most 11rem wide.
+    lv_obj_t *who = this->column_(card, this->m_.px(10));
     lv_obj_set_flex_align(who, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_t *face = this->avatar_(who, mention.person, this->m_.px(88));
     speech_badge(face, true);
-    this->inline_(who, mention.caption, FontRole::SMALL, p.muted, this->m_.px(200));
+    this->line_box_(this->inline_(who, mention.caption, FontRole::CAPTION, p.muted, this->m_.px(176)),
+                    FontRole::CAPTION, 19.5f);
     if (mention.ack.has_value()) {
       lv_obj_t *ok = this->box_(card);
       int d = this->m_.px(88);
@@ -408,25 +526,43 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
 
   // NOW → NEXT.
   if (pv.now.has_value() || pv.next.has_value()) {
-    lv_obj_t *row = this->row_(parent, this->m_.px(28));
+    // .dash-pv-nownext: the cards 24 px either side of the arrow.
+    lv_obj_t *row = this->row_(parent, this->m_.px(24));
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     auto big_tile = [&](const Tile &tile, const std::string &label, bool next) {
+      // .dash-pv-card: 200 px wide, at least 172 px, 8 px / 10 px padding,
+      // its label, picture (5rem) and caption 4 px apart, centred.
       lv_obj_t *t = this->column_(row, this->m_.px(4));
-      lv_obj_set_size(t, this->m_.px(196), this->m_.px(170));
+      lv_obj_set_width(t, this->m_.px(200));
+      lv_obj_set_style_min_height(t, this->m_.px(172), LV_PART_MAIN);
+      lv_obj_set_style_pad_top(t, this->m_.px(8), LV_PART_MAIN);
+      lv_obj_set_style_pad_bottom(t, this->m_.px(10), LV_PART_MAIN);
+      lv_obj_set_style_pad_hor(t, this->m_.px(10), LV_PART_MAIN);
       lv_obj_set_flex_align(t, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
       lv_obj_set_style_bg_color(t, lv_color_hex(p.surface), LV_PART_MAIN);
       lv_obj_set_style_bg_opa(t, LV_OPA_COVER, LV_PART_MAIN);
-      lv_obj_set_style_radius(t, this->m_.px(20), LV_PART_MAIN);
+      lv_obj_set_style_radius(t, this->m_.px(24), LV_PART_MAIN);
       lv_obj_set_style_border_width(t, next ? this->m_.px(3) : this->m_.px(9), LV_PART_MAIN);
       // NOW is live data: offline its frame greys and its picture fades.
       lv_obj_set_style_border_color(t, lv_color_hex(next ? tile.color.or_else(p.accent) : live.mark(p.border)),
                                     LV_PART_MAIN);
-      this->caps_(t, label, p.muted);
+      this->pv_sec_(t, label);
       if (!tile.icon.empty()) {
-        lv_obj_t *icon = this->emoji_(t, tile.icon, this->m_.px(84));
+        lv_obj_t *icon = this->emoji_(t, tile.icon, this->m_.px(80));
         if (!next)
           this->live_picture_(icon);
       }
-      this->inline_(t, tile.caption, FontRole::BODY, p.muted, this->m_.px(176));
+      // .dash-pv-card .dash-pv-cap: 16 px, line-height 1.3, centred, two
+      // lines at most.
+      if (!tile.caption.empty()) {
+        lv_obj_t *cap = this->text_(t, tile.caption, FontRole::SMALL, p.muted);
+        lv_obj_set_style_max_width(cap, LV_PCT(100), LV_PART_MAIN);
+        lv_label_set_long_mode(cap, LV_LABEL_LONG_MODE_WRAP);
+        lv_obj_set_style_text_align(cap, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_set_style_max_height(cap, this->m_.px(2 * 20.8f), LV_PART_MAIN);
+        this->line_box_(cap, FontRole::SMALL, 20.8f);
+      }
+      fix_size(t);
       // The pie counts down to NEXT: hidden offline (the browser's data-rel).
       if (next && pv.next_pie.has_value() && !live.stale) {
         lv_obj_t *pie = this->box_(t);
@@ -471,20 +607,29 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
 
   // The household chat as faces with a caption.
   if (!pv.messages.empty()) {
-    lv_obj_t *row = this->row_(parent, this->m_.px(28));
+    // .dash-pv-msg-list: 20 px apart.
+    lv_obj_t *row = this->row_(parent, this->m_.px(20));
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     for (const auto &msg : pv.messages) {
-      lv_obj_t *item = this->column_(row, this->m_.px(6));
+      lv_obj_t *item = this->column_(row, this->m_.px(10));
       lv_obj_set_flex_align(item, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
       lv_obj_t *face = this->avatar_(item, msg.person, this->m_.px(88));
       speech_badge(face, msg.is_new);
       // .dash-pv-msg: at most 11rem wide, its caption one line with "…".
-      this->inline_(item, msg.caption, FontRole::SMALL, p.muted, this->m_.px(176));
+      this->line_box_(this->inline_(item, msg.caption, FontRole::CAPTION, p.muted, this->m_.px(176)),
+                      FontRole::CAPTION, 19.5f);
     }
   }
 
   // My day: morning / afternoon / evening / night, each a row of tiles.
-  this->caps_(parent, pv.day.label, p.muted);
+  // .dash-pv-day > .dash-pv-sec: 6 px in, 6 px over the parts.
+  lv_obj_t *day_label = this->pv_sec_(parent, pv.day.label);
+  lv_obj_set_style_margin_left(day_label, this->m_.px(6), LV_PART_MAIN);
+  // .dash-pv: 20 px between the head and the day.
+  lv_obj_set_style_margin_top(day_label, this->m_.px(20) - lv_obj_get_style_pad_row(parent, LV_PART_MAIN),
+                              LV_PART_MAIN);
+  lv_obj_set_style_margin_bottom(day_label, this->m_.px(6) - lv_obj_get_style_pad_row(parent, LV_PART_MAIN),
+                                 LV_PART_MAIN);
   if (pv.day.empty && !pv.day.empty_label.empty()) {
     lv_obj_t *line = this->row_(parent, this->m_.px(10));
     if (!pv.day.empty_icon.empty())
@@ -492,50 +637,69 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
     this->text_(line, pv.day.empty_label, FontRole::BODY, p.muted);
   }
   // The parts side by side, as on a 1280 px tablet; tiles wrap inside.
-  const int tile = this->m_.px(84);
+  // .dash-pv-emoji: 2.75rem.
+  const int tile = this->m_.px(44);
   const int width = main_width(this->m_, this->board_->header.rail.shown);
+  // .dash-pv-parts: four equal columns, 12 px apart.
+  const int part_gap = this->m_.px(12);
   const int parts = std::max<int>(1, static_cast<int>(pv.day.parts.size()));
-  const int part_w = (width - gap * (parts - 1)) / parts;
-  lv_obj_t *day = this->row_(parent, gap);
+  const int part_w = (width - part_gap * (parts - 1)) / parts;
+  lv_obj_t *day = this->row_(parent, part_gap);
   lv_obj_set_width(day, LV_PCT(100));
   lv_obj_set_flex_align(day, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
   for (const auto &part : pv.day.parts) {
+    // .dash-pv-part: 12 px / 8 px padding inside a 3 px border (the
+    // accent on the part of the day it is now), the icon 10 px over the
+    // tiles.
     lv_obj_t *col = this->column_(day, this->m_.px(10));
     lv_obj_set_width(col, part_w);
     lv_obj_set_flex_align(col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_min_height(col, this->m_.px(180), LV_PART_MAIN);
     lv_obj_set_style_bg_color(col, lv_color_hex(p.surface), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(col, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(col, this->m_.px(16), LV_PART_MAIN);
-    lv_obj_set_style_pad_all(col, this->m_.px(12), LV_PART_MAIN);
-    lv_obj_set_style_pad_bottom(col, this->m_.px(18), LV_PART_MAIN);
-    if (part.state == "now") {
-      lv_obj_set_style_border_color(col, lv_color_hex(p.accent), LV_PART_MAIN);
-      lv_obj_set_style_border_width(col, this->m_.px(3), LV_PART_MAIN);
-    }
+    lv_obj_set_style_radius(col, this->m_.px(20), LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(col, this->m_.px(12), LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(col, this->m_.px(8), LV_PART_MAIN);
+    lv_obj_set_style_border_width(col, this->m_.px(3), LV_PART_MAIN);
+    lv_obj_set_style_border_color(col, lv_color_hex(p.accent), LV_PART_MAIN);
+    lv_obj_set_style_border_opa(col, part.state == "now" ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
     // A past part fades only its icon; its tiles fade their own pictures.
-    lv_obj_t *part_icon = this->emoji_(col, part.icon, this->m_.px(44));
+    lv_obj_t *part_icon = this->emoji_(col, part.icon, this->m_.px(40));
     if (part.state == "past")
       lv_obj_set_style_opa(part_icon, OPA_PAST_PICTURE, LV_PART_MAIN);
-    lv_obj_t *tiles = this->row_(col, this->m_.px(8));
+    // .dash-pv-tiles: wrapping, centred, 10 px apart.
+    lv_obj_t *tiles = this->row_(col, this->m_.px(10));
     lv_obj_set_width(tiles, LV_PCT(100));
     lv_obj_set_flex_flow(tiles, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_flex_align(tiles, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_row(tiles, this->m_.px(14), LV_PART_MAIN);
+    lv_obj_set_style_pad_row(tiles, this->m_.px(10), LV_PART_MAIN);
     // Room for the last row's colour strip, drawn under each tile.
     lv_obj_set_style_pad_bottom(tiles, this->m_.px(6), LV_PART_MAIN);
     for (const auto &t : part.tiles)
       this->build_tile_(tiles, t, tile);
   }
+  // A grid row: every part as tall as the tallest.
+  lv_obj_update_layout(day);
+  int tallest = 0;
+  for (uint32_t k = 0; k < lv_obj_get_child_count(day); k++)
+    tallest = std::max<int>(tallest, lv_obj_get_height(lv_obj_get_child(day, k)));
+  for (uint32_t k = 0; k < lv_obj_get_child_count(day); k++)
+    lv_obj_set_height(lv_obj_get_child(day, k), tallest);
 
-  // Tomorrow · My jobs.
+  // Tomorrow · My jobs · Who's home: .dash-pv-row cards with a small-caps
+  // label.
+  auto pv_card = [&](lv_obj_t *in, const std::string &label) {
+    lv_obj_t *card = this->card_(in);
+    if (!label.empty())
+      this->pv_sec_(card, label);
+    return card;
+  };
   lv_obj_t *row = this->row_(parent, gap);
   lv_obj_set_width(row, LV_PCT(100));
   lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
   lv_obj_set_style_pad_row(row, gap, LV_PART_MAIN);
   if (pv.tomorrow.has_value()) {
-    lv_obj_t *card = this->section_card_(row, pv.tomorrow->label);
+    lv_obj_t *card = pv_card(row, pv.tomorrow->label);
     lv_obj_t *tiles = this->row_(card, this->m_.px(12));
     lv_obj_set_style_pad_bottom(tiles, this->m_.px(6), LV_PART_MAIN);
     this->emoji_(tiles, Emoji{"\xF0\x9F\x8C\x99", "1f319"}, this->m_.px(40));
@@ -543,7 +707,7 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
       this->build_tile_(tiles, t, tile);
   }
   if (!pv.jobs.empty()) {
-    lv_obj_t *card = this->section_card_(row, pv.jobs_label);
+    lv_obj_t *card = pv_card(row, pv.jobs_label);
     lv_obj_t *tiles = this->row_(card, this->m_.px(12));
     lv_obj_set_style_pad_bottom(tiles, this->m_.px(6), LV_PART_MAIN);
     // The ☐ / ✓ overhangs each tile's top corner, as the browser's
@@ -587,7 +751,7 @@ void SocialHomeDisplay::build_picture_(lv_obj_t *parent) {
     }
   }
   if (pv.where.has_value()) {
-    lv_obj_t *card = this->section_card_(row, pv.where->label);
+    lv_obj_t *card = pv_card(row, pv.where->label);
     lv_obj_t *line = this->row_(card, this->m_.px(10));
     // Live data: offline the faces and icons fade.
     auto group = [&](const PresenceGroup &g) {

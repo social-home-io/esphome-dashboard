@@ -27,6 +27,12 @@ substitutions:
   font_size_lock: "96"
   font_size_text: "18"
   font_size_text_large: "32"
+  font_size_medium: "20"
+  font_size_message: "24"
+  font_size_caption: "15"
+  font_size_tag: "13"
+  font_size_micro: "11"
+  font_size_clock_small: "64"
   # Social Home to talk to; empty shows the address screen first.
   server_url: ""
   # Stands in for the mDNS browse on the address screen (the host build has
@@ -110,6 +116,14 @@ socialhome_display:
     text_bold: font_text_bold
     lock_time: font_lock_time
     text_large: font_text_large
+    medium: font_medium
+    medium_bold: font_medium_bold
+    heading: font_heading
+    message: font_message
+    caption: font_caption
+    tag: font_tag
+    micro: font_micro
+    clock_small: font_clock_small
 
 interval:
   - interval: 250ms

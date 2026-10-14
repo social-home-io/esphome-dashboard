@@ -278,6 +278,25 @@ LineBox line_box(int font_line, int css_line);
 /// result is rounded once. Negative when the inner box reaches above.
 int inline_top(float css_line, int font_line, int font_base, float inner_css, int inner_line, int inner_base);
 
+/// The browser's width of a text the panel measures `panel_width` px wide
+/// (`glyphs` characters of a font whose LVGL line is `font_line` px). The
+/// panel's fonts advance every glyph a whole, hinted pixel (ESPHome stores
+/// integer advances); the browser lays Roboto out at fractional advances,
+/// ~1.6 % of the font size (1.37 % of Roboto's 1.17 em line) wider a glyph:
+/// at 22 px "08:15–09:00" is 120 px on the panel, 124 in Chromium. Where a layout decision hangs on a width — does a row's title
+/// fit beside its time? — the browser's width decides it.
+int css_width(int panel_width, int glyphs, int font_line);
+
+/// CSS `n ch` for a font whose "0" is `zero_px` wide on the panel.
+int css_ch(float n, int zero_px, int font_line);
+
+/// Characters (UTF-8 code points) in `text`.
+int utf8_glyphs(const std::string &text);
+
+/// `.dash-row` (flex-wrap): whether the time (`time_w`) and the main part
+/// (at least `main_min`) share one line `room` px wide, `gap` apart.
+bool row_fits_beside(int room, int time_w, int gap, int main_min);
+
 /// Whether the rail names the Home tile under the house: always, except on
 /// a picture-view person's page, where the tablet hides the word
 /// (`_rail.html.j2`: `dash-visually-hidden` while `picture`) and the tile is
