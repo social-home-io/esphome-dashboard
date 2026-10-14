@@ -183,6 +183,132 @@ std::vector<std::string> emoji_codes(const std::string &text, size_t max) {
   return out;
 }
 
+std::vector<TextRun> text_runs(const std::string &text, bool words, size_t max_emoji) {
+  std::vector<TextRun> out;
+  std::string txt;   // words collected since the last emoji / break
+  std::string code;  // the emoji being collected ("1f468-200d-1f373")
+  size_t emoji = 0;
+  bool joining = false;
+  auto flush_text = [&]() {
+    if (txt.empty())
+      return;
+    if (!words) {
+      out.push_back(TextRun{TextRun::TEXT, txt, false});
+    } else {
+      size_t start = 0;
+      while (start < txt.size()) {
+        size_t space = txt.find(' ', start);
+        size_t end = space == std::string::npos ? txt.size() : space + 1;
+        out.push_back(TextRun{TextRun::TEXT, txt.substr(start, end - start), false});
+        start = end;
+      }
+    }
+    txt.clear();
+  };
+  auto flush_emoji = [&]() {
+    if (code.empty())
+      return;
+    if (emoji < max_emoji) {
+      flush_text();
+      out.push_back(TextRun{TextRun::EMOJI, code, false});
+      emoji++;
+    }
+    code.clear();
+  };
+  size_t at = 0;
+  while (at < text.size()) {
+    const size_t start = at;
+    uint32_t cp = next_cp(text, at);
+    if (cp == 0xFE0F || cp == 0xFE0E)
+      continue;  // Twemoji names leave the variation selector out
+    if (cp == 0x200D && !code.empty()) {
+      code += "-200d";
+      joining = true;
+      continue;
+    }
+    bool regional = cp >= 0x1F1E6 && cp <= 0x1F1FF;
+    bool skin = cp >= 0x1F3FB && cp <= 0x1F3FF;
+    if (is_emoji(cp)) {
+      char hex[12];
+      snprintf(hex, sizeof(hex), "%x", static_cast<unsigned>(cp));
+      bool pair = regional && code.size() == 5 && code.rfind("1f1", 0) == 0;
+      if (!joining && !skin && !pair)
+        flush_emoji();
+      code += code.empty() ? hex : std::string("-") + hex;
+      joining = false;
+      continue;
+    }
+    flush_emoji();
+    joining = false;
+    if (is_emoji_glue(cp) || cp == '\r')
+      continue;
+    if (cp == '\n') {
+      while (!txt.empty() && txt.back() == ' ')
+        txt.pop_back();
+      flush_text();
+      if (!out.empty() && out.back().kind != TextRun::BREAK) {
+        out.back().space_after = false;
+        out.push_back(TextRun{TextRun::BREAK, "", false});
+      }
+      continue;
+    }
+    if (cp == ' ' || cp == '\t') {
+      if (!txt.empty()) {
+        if (txt.back() != ' ')
+          txt.push_back(' ');
+      } else if (!out.empty() && out.back().kind == TextRun::EMOJI) {
+        out.back().space_after = true;
+      }
+      continue;
+    }
+    txt.append(text, start, at - start);
+  }
+  flush_emoji();
+  while (!txt.empty() && txt.back() == ' ')
+    txt.pop_back();
+  flush_text();
+  while (!out.empty() && out.back().kind == TextRun::BREAK)
+    out.pop_back();
+  if (!out.empty() && out.back().kind == TextRun::EMOJI)
+    out.back().space_after = false;
+  if (!out.empty() && out.back().kind == TextRun::TEXT) {
+    // A trailing space (split off by `words`) has nothing to separate.
+    std::string &last = out.back().value;
+    while (!last.empty() && last.back() == ' ')
+      last.pop_back();
+    if (last.empty())
+      out.pop_back();
+  }
+  return out;
+}
+
+bool MapFetch::due(const std::string &path, const std::string &board_etag, uint32_t now) const {
+  if (this->waiting && static_cast<int32_t>(now - this->retry_at) < 0)
+    return false;
+  return path != this->held_path || board_etag != this->seen_board || this->waiting;
+}
+
+std::string MapFetch::if_none_match(const std::string &path) const {
+  return path == this->held_path ? this->held_etag : std::string();
+}
+
+void MapFetch::loaded(const std::string &path, const std::string &etag, const std::string &board_etag) {
+  this->held_path = path;
+  this->held_etag = etag;
+  this->seen_board = board_etag;
+  this->waiting = false;
+}
+
+void MapFetch::unchanged(const std::string &board_etag) {
+  this->seen_board = board_etag;
+  this->waiting = false;
+}
+
+void MapFetch::failed(uint32_t now, uint32_t seconds) {
+  this->retry_at = now + seconds * 1000;
+  this->waiting = true;
+}
+
 namespace {
 int pick(int px, const int *sizes, int count) {
   for (int k = 0; k < count; k++)

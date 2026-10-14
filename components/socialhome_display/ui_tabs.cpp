@@ -120,25 +120,43 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
   const MapTab &map = this->board_->map;
   const int width = main_width(this->m_, this->board_->header.rail.shown);
   const int gap = this->m_.gap();
-  const int list_w = this->m_.px(336);
+  const int list_w = this->m_.map_list_width();
   lv_obj_t *row = this->row_(parent, gap);
   lv_obj_set_width(row, LV_PCT(100));
   lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
-  // The map picture arrives with a later server release (GET /map.png);
-  // until then the area keeps its place and says so.
-  lv_obj_t *area = this->card_(row);
-  lv_obj_set_size(area, width - list_w - gap, this->m_.px(560));
-  lv_obj_set_flex_align(area, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_bg_color(area, lv_color_hex(p.bg), LV_PART_MAIN);
-  this->emoji_(area, Emoji{"\xF0\x9F\x97\xBA", "1f5fa"}, this->m_.emoji_lg());
-  lv_obj_t *note = this->text_(area, this->str_("map_placeholder"), FontRole::BODY, p.muted);
-  lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-  if (!map.attribution.empty())
-    this->text_(area, map.attribution, FontRole::SMALL, p.muted);
+  // The map as one picture (map.png), framed like the browser's Map tab
+  // with the faces, pins and tile credit drawn in; the list beside it.
+  const int map_w = width - list_w - gap;
+  const int map_h = this->m_.map_height();
+  const lv_image_dsc_t *picture = map.image.has_value() ? this->map_.picture(this->map_path_()) : nullptr;
+  if (picture != nullptr) {
+    lv_obj_t *img = lv_image_create(row);
+    lv_image_set_src(img, picture);
+    lv_obj_set_size(img, map_w, map_h);
+    lv_image_set_inner_align(img, LV_IMAGE_ALIGN_CENTER);
+    lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
+    // Rounded like the cards (LVGL clips an image to its radius).
+    lv_obj_set_style_radius(img, this->m_.radius(), LV_PART_MAIN);
+  } else {
+    // Loading, no tiles right now (503), or a server without the picture.
+    lv_obj_t *area = this->card_(row);
+    lv_obj_set_size(area, map_w, map_h);
+    lv_obj_set_flex_align(area, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(area, lv_color_hex(p.bg), LV_PART_MAIN);
+    this->emoji_(area, Emoji{"\xF0\x9F\x97\xBA", "1f5fa"}, this->m_.emoji_lg());
+    if (!map.image_field || !map.image.has_value()) {
+      lv_obj_t *note = this->wrap_(area, this->str_(map.image_field ? "map_none" : "map_placeholder"),
+                                   FontRole::BODY, p.muted);
+      lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    }
+    if (!map.attribution.empty())
+      this->text_(area, map.attribution, FontRole::SMALL, p.muted);
+  }
 
   lv_obj_t *list = this->section_card_(row, map.title.empty() ? this->str_("map_title") : map.title);
   lv_obj_set_width(list, list_w);
+  lv_obj_set_style_min_height(list, map_h, LV_PART_MAIN);
   lv_obj_set_style_pad_row(list, this->m_.px(14), LV_PART_MAIN);
   const int face = this->m_.px(64);
   for (const auto &spot : map.spots) {

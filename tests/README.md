@@ -3,7 +3,10 @@
 - `scripts/` — unit tests for the CI helper scripts
   (`python -m unittest discover -s tests -t .`).
 - `cpp/` — host C++ tests for the dashboard component: the JSON parser against
-  every pinned Social Home fixture, plus the layout / URL / emoji helpers.
+  every pinned Social Home fixture, the layout / URL / emoji helpers (text and
+  emoji runs), the map-picture fetch policy and the PNG decoders. `png_bench`
+  (built alongside, not a test) times the map picture's decode:
+  `build/tests/png_bench map.png`.
   `cmake -S tests/cpp -B build/tests && cmake --build build/tests && ctest --test-dir build/tests`.
 - `fixtures/display-api/` — the Social Home display API contract (schemas and
   real answers), copied verbatim from `docs/display-api/v1/` at the commit in

@@ -9,8 +9,6 @@
 #include "esphome/core/defines.h"
 #include "esphome/core/log.h"
 
-#include <pngle.h>
-
 #ifdef USE_ESP32
 #include <esp_crt_bundle.h>
 #include <esp_heap_caps.h>
@@ -30,127 +28,10 @@ static const char *const TAG = "socialhome_display.net";
 
 /// Larger answers are refused: a board is ~20 kB, a 192 px avatar ~40 kB.
 static constexpr size_t MAX_BODY = 512 * 1024;
+/// A streamed picture (the map PNG, ~0.3–1 MB) may be this large.
+static constexpr size_t MAX_STREAM = 8 * 1024 * 1024;
 
 uint32_t HttpWorker::timeout_ms_ = 10000;
-
-// ---- memory ------------------------------------------------------------
-
-static uint8_t *big_alloc(size_t size) {
-#ifdef USE_ESP32
-  void *p = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  if (p != nullptr)
-    return static_cast<uint8_t *>(p);
-#endif
-  return static_cast<uint8_t *>(malloc(size));
-}
-
-Pixels::~Pixels() { free(this->data); }
-
-// ---- PNG ---------------------------------------------------------------
-
-namespace {
-
-struct PngTarget {
-  uint32_t width{0};
-  uint32_t height{0};
-  uint8_t *rgba{nullptr};  // straight RGBA, source size
-};
-
-void png_init(pngle_t *pngle, uint32_t w, uint32_t h) {
-  auto *t = static_cast<PngTarget *>(pngle_get_user_data(pngle));
-  if (w == 0 || h == 0 || w > 1024 || h > 1024)
-    return;
-  t->width = w;
-  t->height = h;
-  t->rgba = big_alloc(static_cast<size_t>(w) * h * 4);
-  if (t->rgba != nullptr)
-    memset(t->rgba, 0, static_cast<size_t>(w) * h * 4);
-}
-
-void png_draw(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint8_t rgba[4]) {
-  auto *t = static_cast<PngTarget *>(pngle_get_user_data(pngle));
-  if (t->rgba == nullptr)
-    return;
-  for (uint32_t yy = y; yy < y + h && yy < t->height; yy++)
-    for (uint32_t xx = x; xx < x + w && xx < t->width; xx++)
-      memcpy(t->rgba + (static_cast<size_t>(yy) * t->width + xx) * 4, rgba, 4);
-}
-
-}  // namespace
-
-std::shared_ptr<Pixels> decode_png(const uint8_t *data, size_t len, int size, bool round) {
-  if (len < 8 || memcmp(data, "\x89PNG", 4) != 0 || size <= 0)
-    return nullptr;
-  PngTarget target;
-  pngle_t *pngle = pngle_new();
-  if (pngle == nullptr)
-    return nullptr;
-  pngle_set_user_data(pngle, &target);
-  pngle_set_init_callback(pngle, png_init);
-  pngle_set_draw_callback(pngle, png_draw);
-  int fed = pngle_feed(pngle, data, len);
-  pngle_destroy(pngle);
-  if (fed < 0 || target.rgba == nullptr) {
-    free(target.rgba);
-    return nullptr;
-  }
-  auto out = std::make_shared<Pixels>();
-  out->width = size;
-  out->height = size;
-  out->size = static_cast<size_t>(size) * size * 4;
-  out->data = big_alloc(out->size);
-  if (out->data == nullptr) {
-    free(target.rgba);
-    return nullptr;
-  }
-  memset(out->data, 0, out->size);
-  // Fit the source into size×size, keeping its aspect, centred.
-  float scale = std::min(size / static_cast<float>(target.width), size / static_cast<float>(target.height));
-  int dw = std::max(1, static_cast<int>(std::lround(target.width * scale)));
-  int dh = std::max(1, static_cast<int>(std::lround(target.height * scale)));
-  int ox = (size - dw) / 2;
-  int oy = (size - dh) / 2;
-  float centre = (size - 1) / 2.0f;
-  float radius = size / 2.0f;
-  for (int y = 0; y < dh; y++) {
-    uint32_t sy0 = static_cast<uint32_t>(y * target.height / dh);
-    uint32_t sy1 = std::max(sy0 + 1, static_cast<uint32_t>((y + 1) * target.height / dh));
-    for (int x = 0; x < dw; x++) {
-      uint32_t sx0 = static_cast<uint32_t>(x * target.width / dw);
-      uint32_t sx1 = std::max(sx0 + 1, static_cast<uint32_t>((x + 1) * target.width / dw));
-      // Box filter, alpha-weighted so transparent edges don't darken.
-      uint32_t r = 0, g = 0, b = 0, a = 0, n = 0;
-      for (uint32_t sy = sy0; sy < sy1 && sy < target.height; sy++) {
-        const uint8_t *row = target.rgba + static_cast<size_t>(sy) * target.width * 4;
-        for (uint32_t sx = sx0; sx < sx1 && sx < target.width; sx++) {
-          const uint8_t *p = row + sx * 4;
-          r += p[0] * p[3];
-          g += p[1] * p[3];
-          b += p[2] * p[3];
-          a += p[3];
-          n++;
-        }
-      }
-      uint8_t *o = out->data + (static_cast<size_t>(oy + y) * size + ox + x) * 4;
-      if (a > 0) {
-        o[0] = static_cast<uint8_t>(b / a);
-        o[1] = static_cast<uint8_t>(g / a);
-        o[2] = static_cast<uint8_t>(r / a);
-      }
-      uint32_t alpha = n > 0 ? a / n : 0;
-      if (round) {
-        float dx = ox + x - centre;
-        float dy = oy + y - centre;
-        float edge = radius - std::sqrt(dx * dx + dy * dy);  // >0 inside
-        if (edge < 1.0f)
-          alpha = edge <= 0.0f ? 0 : static_cast<uint32_t>(alpha * edge);
-      }
-      o[3] = static_cast<uint8_t>(alpha);
-    }
-  }
-  free(target.rgba);
-  return out;
-}
 
 // ---- transport -----------------------------------------------------------
 
@@ -206,7 +87,33 @@ HttpResponse HttpWorker::perform_(const HttpRequest &request) {
   if (err == ESP_OK) {
     int64_t length = esp_http_client_fetch_headers(client);
     response.status = esp_http_client_get_status_code(client);
-    if (length > static_cast<int64_t>(MAX_BODY)) {
+    const bool stream = request.stream_width > 0 && response.status == 200;
+    if (stream) {
+      // Straight into the decoder: the PNG itself is never held whole.
+      PngStream png(request.stream_width, request.stream_height, request.background);
+      char chunk[4096];
+      size_t total = 0;
+      while (true) {
+        int got = esp_http_client_read(client, chunk, sizeof(chunk));
+        if (got < 0) {
+          response.error = "read failed";
+          response.status = 0;
+          break;
+        }
+        if (got == 0)
+          break;
+        total += static_cast<size_t>(got);
+        if (total > MAX_STREAM || !png.feed(reinterpret_cast<const uint8_t *>(chunk), static_cast<size_t>(got))) {
+          response.error = total > MAX_STREAM ? "answer too large" : png.error();
+          break;
+        }
+      }
+      if (response.status == 200) {
+        response.pixels = png.finish();
+        if (response.pixels == nullptr && response.error.empty())
+          response.error = "incomplete picture";
+      }
+    } else if (length > static_cast<int64_t>(MAX_BODY)) {
       response.error = "answer too large";
       response.status = 0;
     } else {
@@ -268,7 +175,7 @@ HttpResponse HttpWorker::perform_(const HttpRequest &request) {
   response.status = result->status;
   response.etag = result->get_header_value("ETag");
   response.retry_after = result->get_header_value("Retry-After");
-  if (result->body.size() > MAX_BODY) {
+  if (result->body.size() > (request.stream_width > 0 ? MAX_STREAM : MAX_BODY)) {
     response.status = 0;
     response.error = "answer too large";
     return response;
@@ -300,7 +207,7 @@ bool HttpWorker::submit(HttpRequest request) {
       // esp_http_client + TLS need a roomy stack in internal RAM.
       esp_pthread_cfg_t cfg = esp_pthread_get_default_config();
       cfg.stack_size = 12 * 1024;
-      cfg.prio = 5;
+      cfg.prio = this->priority_;
       cfg.thread_name = this->name_;
       esp_pthread_set_cfg(&cfg);
 #endif
@@ -345,7 +252,16 @@ void HttpWorker::run_() {
       this->busy_ = true;
     }
     HttpResponse response = perform_(request);
-    if (request.decode_size > 0 && response.status == 200) {
+    if (request.stream_width > 0 && response.status == 200 && response.pixels == nullptr && !response.body.empty()) {
+      // Host build: the body arrived whole.
+      PngStream png(request.stream_width, request.stream_height, request.background);
+      png.feed(reinterpret_cast<const uint8_t *>(response.body.data()), response.body.size());
+      response.pixels = png.finish();
+      if (response.pixels == nullptr)
+        response.error = png.error().empty() ? "incomplete picture" : png.error();
+      response.body.clear();
+      response.body.shrink_to_fit();
+    } else if (request.decode_size > 0 && response.status == 200) {
       response.pixels = decode_png(reinterpret_cast<const uint8_t *>(response.body.data()), response.body.size(),
                                    request.decode_size, request.round);
       response.body.clear();

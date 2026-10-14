@@ -21,6 +21,7 @@
 #endif
 
 #include "images.h"
+#include "map_picture.h"
 #include "model.h"
 #include "net.h"
 #include "util.h"
@@ -94,6 +95,19 @@ class SocialHomeDisplay : public Component {
   void handle_pairing_(HttpResponse &response);
   void handle_board_(HttpResponse &response);
   void handle_theme_(HttpResponse &response);
+  void handle_lock_(HttpResponse &response);
+  void handle_unlock_(HttpResponse &response);
+  void handle_ack_(HttpResponse &response, const std::string &key);
+  /// The server dropped this panel (401): forget the token, pair again.
+  void unpair_();
+  /// POST /lock, /unlock {pin}, /ack {message_id, person_id}.
+  void request_lock_();
+  void request_unlock_();
+  void request_ack_(const std::string &key);
+  const Mention *find_mention_(const std::string &key) const;
+  /// The Map tab's picture: path with ?w=&h=&scheme= for this panel.
+  std::string map_path_() const;
+  void tick_map_();
   void request_board_();
   void request_theme_();
   void navigate_(const std::string &path);
@@ -112,7 +126,13 @@ class SocialHomeDisplay : public Component {
   lv_obj_t *card_(lv_obj_t *parent);
   lv_obj_t *text_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color);
   lv_obj_t *wrap_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color);
+  /// Text with its emoji in place, wrapping between words.
   lv_obj_t *rich_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color);
+  /// One line of text with its emoji in place, at most `max_width` wide
+  /// (cut with "…").
+  lv_obj_t *inline_(lv_obj_t *parent, const std::string &text, FontRole font, uint32_t color, int max_width);
+  /// Emoji drawn inside text of `font`: about the line height.
+  int emoji_px_(FontRole font) const;
   lv_obj_t *caps_(lv_obj_t *parent, const std::string &text, uint32_t color);
   lv_obj_t *emoji_(lv_obj_t *parent, const Emoji &emoji, int size);
   lv_obj_t *avatar_(lv_obj_t *parent, const std::string &person_id, int size);
@@ -133,6 +153,9 @@ class SocialHomeDisplay : public Component {
   // ---- screens
   void build_frame_(lv_obj_t *screen);            // ui_common.cpp: rail + scrolling main column
   void build_rail_(lv_obj_t *parent);
+  lv_obj_t *build_lock_button_(lv_obj_t *parent);
+  /// The rail / corner lock button shows: the household has a PIN.
+  bool can_lock_() const;
   void build_tabs_(lv_obj_t *parent);
   void build_alerts_(lv_obj_t *parent, const std::vector<Mention> &alerts);
   void build_offline_(lv_obj_t *parent);
@@ -159,6 +182,7 @@ class SocialHomeDisplay : public Component {
   // ---- event callbacks
   static void on_navigate_(lv_event_t *event);
   static void on_ack_(lv_event_t *event);
+  static void on_lock_(lv_event_t *event);
   static void on_wake_(lv_event_t *event);
   static void on_night_tap_(lv_event_t *event);
   static void on_server_ready_(lv_event_t *event);
@@ -209,10 +233,15 @@ class SocialHomeDisplay : public Component {
   uint32_t mode_since_{0};
   HttpWorker api_{"sh_api", 4};
   ImageCache images_;
+  MapPicture map_;
   uint32_t next_id_{1};
   uint32_t board_request_{0};
   uint32_t theme_request_{0};
   uint32_t pair_request_{0};
+  uint32_t lock_request_{0};
+  uint32_t unlock_request_{0};
+  std::map<uint32_t, std::string> ack_requests_;  ///< request id → mention key
+  bool lock_refused_{false};  ///< 409 DASHBOARD_PIN_REQUIRED: no PIN after all
   uint32_t next_poll_{0};
   uint32_t next_theme_{0};
   uint32_t next_pair_poll_{0};
@@ -248,6 +277,9 @@ class SocialHomeDisplay : public Component {
   lv_obj_t *pin_dots_{nullptr};
   lv_obj_t *pin_note_{nullptr};
   bool pin_open_{false};
+  std::string pin_message_;  ///< under the PIN pad ("Wrong PIN · 4 tries left")
+  bool pin_error_{false};
+  uint32_t pin_wait_until_{0};  ///< 429: no new try before this (millis)
   uint32_t press_started_{0};
   bool press_fired_{false};
   std::vector<std::unique_ptr<std::string>> payloads_;

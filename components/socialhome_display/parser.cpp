@@ -626,6 +626,13 @@ ParseResult parse_board(const char *data, size_t len, Board &out) {
     out.map.title = s(m["title"]);
     out.map.label = s(m["label"]);
     out.map.attribution = s(m["attribution"]);
+    out.map.image_field = !m["image"].isUnbound();
+    if (m["image"].is<JO>()) {
+      JV im = m["image"];
+      out.map.image = MapImage{s(im["url"]), i(im["width"]), i(im["height"]), s(im["etag"])};
+      if (out.map.image->url.empty())
+        out.map.image.reset();
+    }
     for (JV spot : m["spots"].as<JA>()) {
       MapSpot sp;
       sp.person = s(spot["person"]);
@@ -707,7 +714,6 @@ ParseResult parse_lock(const char *data, size_t len, LockScreen &out) {
   out.unlock = s(st["unlock"]);
   out.del = s(st["delete"]);
   out.wrong_pin = s(st["wrong_pin"]);
-  out.unlock_path = s(root["unlock_path"]);
   return ParseResult::OK;
 }
 
@@ -805,6 +811,63 @@ std::string parse_error_code(const char *data, size_t len) {
   if (load(data, len, doc) != ParseResult::OK)
     return {};
   return s(doc["error"]["code"]);
+}
+
+ApiError parse_error(const char *data, size_t len) {
+  ApiError out;
+  ArduinoJson::JsonDocument doc(allocator());
+  if (load(data, len, doc) != ParseResult::OK)
+    return out;
+  JV e = doc["error"];
+  out.code = s(e["code"]);
+  out.detail = s(e["detail"]);
+  out.remaining = i(e["params"]["remaining"], -1);
+  out.retry_after = i(e["params"]["retry_after"], 0);
+  return out;
+}
+
+ParseResult parse_unlocked(const char *data, size_t len) {
+  ArduinoJson::JsonDocument doc(allocator());
+  ParseResult r = load(data, len, doc);
+  if (r != ParseResult::OK)
+    return r;
+  JO root = doc.as<JO>();
+  if ((r = check_version(root)) != ParseResult::OK)
+    return r;
+  if (!root["locked"].is<bool>() || root["locked"].as<bool>())
+    return ParseResult::BAD_SHAPE;
+  return ParseResult::OK;
+}
+
+ParseResult parse_acknowledged(const char *data, size_t len) {
+  ArduinoJson::JsonDocument doc(allocator());
+  ParseResult r = load(data, len, doc);
+  if (r != ParseResult::OK)
+    return r;
+  JO root = doc.as<JO>();
+  if ((r = check_version(root)) != ParseResult::OK)
+    return r;
+  return b(root["acknowledged"]) ? ParseResult::OK : ParseResult::BAD_SHAPE;
+}
+
+std::string unlock_body(const std::string &pin) {
+  ArduinoJson::JsonDocument doc(allocator());
+  doc["pin"] = pin;
+  std::string out;
+  ArduinoJson::serializeJson(doc, out);
+  return out;
+}
+
+std::string ack_body(const Ack &ack) {
+  ArduinoJson::JsonDocument doc(allocator());
+  doc["message_id"] = ack.message_id;
+  if (ack.person_id.empty())
+    doc["person_id"] = nullptr;
+  else
+    doc["person_id"] = ack.person_id;
+  std::string out;
+  ArduinoJson::serializeJson(doc, out);
+  return out;
 }
 
 }  // namespace esphome::socialhome_display

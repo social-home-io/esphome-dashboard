@@ -212,26 +212,27 @@ void SocialHomeDisplay::on_pin_key_(lv_event_t *event) {
   auto *self = static_cast<SocialHomeDisplay *>(lv_obj_get_user_data(target));
   if (self == nullptr || key == nullptr)
     return;
-  const Palette &p = self->palette_();
   if (*key == "open") {
     self->pin_open_ = true;
     self->dirty_ = true;
     return;
   }
+  if (self->unlock_request_ != 0)
+    return;  // the last PIN is being checked
   if (*key == "del") {
     if (!self->pin_.empty())
       self->pin_.pop_back();
   } else if (*key == "ok") {
-    // POST {"pin"} to the server's unlock endpoint once it exists (the lock
-    // body then names it); until then the lock is lifted in Social Home.
-    if (self->pin_note_ != nullptr) {
-      lv_label_set_text(self->pin_note_, self->lock_.unlock_path.empty() ? self->str_("unlock_on_server").c_str()
-                                                                         : self->str_("wrong_pin").c_str());
-      lv_obj_set_style_text_color(self->pin_note_, lv_color_hex(p.error_text), LV_PART_MAIN);
-    }
-    self->pin_.clear();
+    // POST /unlock {"pin"}; the answer unlocks, or says why not.
+    self->request_unlock_();
   } else if (self->pin_.size() < 8) {
     self->pin_ += *key;
+    if (self->pin_error_ && self->pin_note_ != nullptr) {
+      // Typing again clears "Wrong PIN".
+      self->pin_error_ = false;
+      self->pin_message_.clear();
+      lv_label_set_text(self->pin_note_, " ");
+    }
   }
   if (self->pin_dots_ != nullptr) {
     std::string dots;
@@ -262,7 +263,10 @@ void SocialHomeDisplay::build_lock_(lv_obj_t *screen) {
   }
   this->text_(col, lock.locked.empty() ? this->str_("locked") : lock.locked, FontRole::TITLE, p.text);
   this->text_(col, lock.enter_pin.empty() ? this->str_("enter_pin") : lock.enter_pin, FontRole::BODY, p.muted);
-  this->pin_dots_ = this->text_(col, " ", FontRole::TITLE, p.text);
+  std::string dots;
+  for (size_t k = 0; k < this->pin_.size(); k++)
+    dots += "\xE2\x80\xA2 ";  // •
+  this->pin_dots_ = this->text_(col, dots.empty() ? " " : dots, FontRole::TITLE, p.text);
   lv_obj_t *pad = this->row_(col, this->m_.px(14));
   lv_obj_set_width(pad, this->m_.px(3 * 84 + 2 * 14));
   lv_obj_set_flex_flow(pad, LV_FLEX_FLOW_ROW_WRAP);
@@ -298,7 +302,8 @@ void SocialHomeDisplay::build_lock_(lv_obj_t *screen) {
       lv_obj_center(label);
     }
   }
-  this->pin_note_ = this->text_(col, " ", FontRole::BODY, p.muted);
+  this->pin_note_ = this->text_(col, this->pin_message_.empty() ? " " : this->pin_message_, FontRole::BODY_BOLD,
+                                this->pin_error_ ? p.error_text : p.muted);
   lv_obj_set_style_max_width(this->pin_note_, this->m_.px(640), LV_PART_MAIN);
   lv_label_set_long_mode(this->pin_note_, LV_LABEL_LONG_MODE_WRAP);
 }
