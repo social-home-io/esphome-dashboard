@@ -42,6 +42,8 @@ const lv_font_t *SocialHomeDisplay::font_(FontRole role) const {
         return this->font_(FontRole::LABEL);
       case FontRole::CLOCK_SMALL:
         return this->font_(FontRole::DISPLAY);
+      case FontRole::CLOCK_TAB:
+        return this->font_(FontRole::TITLE);
       case FontRole::TEXT:
         return this->font_(FontRole::SMALL);
       case FontRole::TEXT_BOLD:
@@ -298,20 +300,26 @@ lv_obj_t *SocialHomeDisplay::inline_(lv_obj_t *parent, const std::string &text, 
       }
       continue;
     }
-    lv_point_t extent;
-    lv_text_get_size(&extent, run.value.c_str(), f, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    auto width = [f](const std::string &s) {
+      lv_point_t extent;
+      lv_text_get_size(&extent, s.c_str(), f, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+      return static_cast<int>(extent.x);
+    };
+    const int run_w = width(run.value);
+    // The rest is cut with "…" on this line (text-overflow: ellipsis) —
+    // LVGL's dots mode would end it in three full stops.
+    const bool cut = used + run_w > max_width;
+    const std::string shown = cut ? ellipsize(run.value, std::max(0, max_width - used), width) : run.value;
     lv_obj_t *label = lv_label_create(row);
-    lv_label_set_text(label, run.value.c_str());
+    lv_label_set_text(label, shown.c_str());
     lv_obj_set_style_text_font(label, f, LV_PART_MAIN);
     lv_obj_set_style_text_color(label, lv_color_hex(color), LV_PART_MAIN);
-    if (used + extent.x > max_width) {
-      // The rest is cut with "…" — on this line: a dotted label only
-      // stops wrapping when its height is fixed too.
-      lv_obj_set_size(label, std::max(0, max_width - used), lv_font_get_line_height(f));
-      lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+    if (cut) {
+      // An overflowing text fills its box, as the browser's does.
+      lv_obj_set_width(label, std::max(0, max_width - used));
       break;
     }
-    used += extent.x;
+    used += run_w;
   }
   return row;
 }
@@ -641,8 +649,9 @@ lv_obj_t *SocialHomeDisplay::agenda_row_(lv_obj_t *parent, const AgendaRow &row,
   lv_obj_set_flex_flow(line, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_set_flex_align(line, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
   lv_obj_set_width(line, LV_PCT(100));
+  lv_obj_t *pic = nullptr;
   if (!row.icon.empty()) {
-    lv_obj_t *pic = this->emoji_(line, row.icon, icon);
+    pic = this->emoji_(line, row.icon, icon);
     lv_obj_set_style_margin_top(pic, (this->m_.px(line_css) - icon) / 2, LV_PART_MAIN);
     lv_obj_set_style_margin_right(pic, icon_advance - icon - gap, LV_PART_MAIN);
     if (style.emoji_opa != OPA_FULL)
@@ -652,8 +661,24 @@ lv_obj_t *SocialHomeDisplay::agenda_row_(lv_obj_t *parent, const AgendaRow &row,
   lv_obj_set_style_max_width(title, LV_PCT(100), LV_PART_MAIN);
   lv_label_set_long_mode(title, LV_LABEL_LONG_MODE_WRAP);
   this->line_margin_(title, FontRole::BODY, line_css);
-  if (style.strike)
+  if (style.strike) {
     lv_obj_set_style_text_decor(title, LV_TEXT_DECOR_STRIKETHROUGH, LV_PART_MAIN);
+    if (pic != nullptr) {
+      // The icon is a word of the struck title in the browser
+      // (.dash-st-cancelled .dash-row-title): the line runs through it and
+      // the space after it, at the words' height and in their ink.
+      const lv_font_t *f = this->font_(FontRole::BODY);
+      const StrikeLine strike = strike_line(f->line_height, f->base_line, f->underline_thickness);
+      const int title_top = line_box(f->line_height, this->m_.px(line_css)).above;
+      // Over the icon (the line's first child), not faded with it.
+      lv_obj_t *rule = this->box_(line);
+      lv_obj_add_flag(rule, LV_OBJ_FLAG_IGNORE_LAYOUT);
+      lv_obj_set_size(rule, icon_advance, strike.h);
+      lv_obj_set_pos(rule, 0, title_top + strike.y);
+      lv_obj_set_style_bg_color(rule, lv_color_hex(style.title_ink), LV_PART_MAIN);
+      lv_obj_set_style_bg_opa(rule, LV_OPA_COVER, LV_PART_MAIN);
+    }
+  }
   if (tagged) {
     uint32_t fg = row.status == Status::CANCELLED ? p.error_text : p.text;
     uint32_t bg = row.status == Status::CANCELLED ? p.error_bg : p.surface;
@@ -1038,8 +1063,10 @@ void SocialHomeDisplay::build_tabs_(lv_obj_t *parent) {
   if (this->board_->kind != BoardKind::OVERVIEW) {
     lv_obj_t *spacer = this->box_(bar);
     lv_obj_set_flex_grow(spacer, 1);
-    lv_obj_t *clock = this->clock_label_(bar, FontRole::TITLE, p.text);
-    lv_obj_set_style_pad_bottom(clock, this->m_.px(6), LV_PART_MAIN);
+    // .dash-tabs-clock: 2.25rem light, letter-spacing -0.02em (LVGL spaces
+    // in whole pixels: -1).
+    lv_obj_t *clock = this->clock_label_(bar, FontRole::CLOCK_TAB, p.text);
+    lv_obj_set_style_text_letter_space(clock, -std::max(1, this->m_.px(0.02f * 36)), LV_PART_MAIN);
   }
 }
 

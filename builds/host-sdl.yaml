@@ -33,6 +33,7 @@ substitutions:
   font_size_tag: "13"
   font_size_micro: "11"
   font_size_clock_small: "64"
+  font_size_clock_tab: "36"
   # Social Home to talk to; empty shows the address screen first.
   server_url: ""
   # Stands in for the mDNS browse on the address screen (the host build has
@@ -44,6 +45,11 @@ substitutions:
 esphome:
   name: ${name}
   friendly_name: Social Home host panel
+  # The dump names each label's font weight (run.py compares it with the
+  # browser's font-weight).
+  on_boot:
+    - lambda: |-
+        host_driver::font_weight() = [](const lv_font_t *f) { return id(socialhome).font_weight(f); };
   includes:
     - host/driver_path.h
     - host/host_driver.h
@@ -124,6 +130,7 @@ socialhome_display:
     tag: font_tag
     micro: font_micro
     clock_small: font_clock_small
+    clock_tab: font_clock_tab
 
 interval:
   - interval: 250ms

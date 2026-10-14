@@ -158,7 +158,10 @@ is more than ±4 px off (Δx Δy Δw Δh, or further than `boxes.match` reaches)
 a panel text runs off the screen, is cut sideways by its container, or is
 drawn over another text in the same layer (the clock over the offline
 note); the two screens say different words (clock times and numbers
-aside); the panel log has an `[E]` line or a crash, the household log a
+aside); a text both show is in another weight class — light (≤ 350),
+regular (≤ 550), bold — than the browser's computed font-weight (the dump
+names each label's font weight; 500 / 600 draw as the panel's 400 / 700);
+the panel log has an `[E]` line or a crash, the household log a
 traceback. Except what `scripts/screenshots/accepted.json` accepts — every
 entry scoped to screens (and optionally locales / schemes), with bounds and
 a **reason** (format: `checks.py`). `--suggest FILE` writes entries that

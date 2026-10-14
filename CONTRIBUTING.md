@@ -51,7 +51,7 @@ at least 1280×800 that ESPHome supports.
    `font_display`, `font_clock`, `font_night`, `font_lock_time`, `font_lock`,
    `font_text`, `font_text_bold`, `font_text_large`, `font_medium`,
    `font_medium_bold`, `font_heading`, `font_message`, `font_caption`,
-   `font_tag`, `font_micro` and `font_clock_small` from the `font_size_*`
+   `font_tag`, `font_micro`, `font_clock_small` and `font_clock_tab` from the `font_size_*`
    substitutions (the clock fonts need digits and `:` only). A font left out
    falls back to a nearby size.
 3. **Packages:** `devices/<slug>/packages.yaml` sets the substitutions

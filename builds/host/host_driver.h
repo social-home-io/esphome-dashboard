@@ -6,8 +6,9 @@
 //
 //   shot NAME          write snapshots/<node>/NAME.bmp
 //   dump NAME          write NAME.txt next to the snapshots: every visible
-//                      object's box (x y w h, screen px) and label text, to
-//                      measure the layout against the browser's
+//                      object's box (x y w h, screen px), a label's font
+//                      weight (@400) and text, to measure the layout
+//                      against the browser's
 //   tap X Y            click whatever is at (X, Y)
 //   hold X Y           press (X, Y) for 5.5 s (the settings long-press)
 //   type TEXT          put TEXT in the text field on screen and press Enter
@@ -28,6 +29,7 @@
 #include <cstdlib>
 #include <deque>
 #include <fstream>
+#include <functional>
 #include <sstream>
 #include <string>
 
@@ -98,7 +100,15 @@ inline void tap(int x, int y) {
   lv_obj_send_event(obj, LV_EVENT_CLICKED, nullptr);
 }
 
-/// One line per visible object, depth first: indent, x y w h, label text.
+/// The weight of a label's font for `dump` (0: unknown, not written). The
+/// host config points it at the dashboard component's font roles.
+inline std::function<int(const lv_font_t *)> &font_weight() {
+  static std::function<int(const lv_font_t *)> lookup;
+  return lookup;
+}
+
+/// One line per visible object, depth first: indent, x y w h, then for a
+/// label its font's weight (`@400`, when known) and its text.
 inline void dump_tree(std::ofstream &out, lv_obj_t *obj, int depth) {
   if (lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN))
     return;
@@ -106,8 +116,12 @@ inline void dump_tree(std::ofstream &out, lv_obj_t *obj, int depth) {
   lv_obj_get_coords(obj, &a);
   out << std::string(depth * 2, ' ') << a.x1 << ' ' << a.y1 << ' ' << lv_area_get_width(&a) << ' '
       << lv_area_get_height(&a);
-  if (lv_obj_check_type(obj, &lv_label_class))
+  if (lv_obj_check_type(obj, &lv_label_class)) {
+    const int weight = font_weight() ? font_weight()(lv_obj_get_style_text_font(obj, LV_PART_MAIN)) : 0;
+    if (weight > 0)
+      out << " @" << weight;
     out << " \"" << lv_label_get_text(obj) << '"';
+  }
   out << '\n';
   for (uint32_t k = 0; k < lv_obj_get_child_count(obj); k++)
     dump_tree(out, lv_obj_get_child(obj, k), depth + 1);

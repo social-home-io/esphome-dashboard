@@ -5,9 +5,10 @@ The host panel's ``dump NAME`` (builds/host/host_driver.h) writes one line
 per visible LVGL object, depth first, two spaces of indent per level::
 
     148 16 1104 48
-      164 26 91 26 "Overview"
+      164 26 91 26 @700 "Overview"
 
-(x y w h in screen pixels, then a label's text). It dumps the active screen
+(x y w h in screen pixels, then a label's font weight — when the panel
+knows it — and its text). It dumps the active screen
 and then the top layer (sheets such as the panel settings), each from depth 0.
 
 The browser side is a list of ``{x, y, w, h, text, ...}`` — one per element
@@ -36,6 +37,7 @@ class Node:
     w: int
     h: int
     text: str | None = None
+    weight: int | None = None
     parent: "Node | None" = field(default=None, repr=False)
     kids: list["Node"] = field(default_factory=list, repr=False)
 
@@ -53,7 +55,7 @@ class Node:
             yield from k.walk()
 
 
-_LINE = re.compile(r'^( *)(-?\d+) (-?\d+) (\d+) (\d+)(?: "(.*)")?$')
+_LINE = re.compile(r'^( *)(-?\d+) (-?\d+) (\d+) (\d+)(?: @(\d+))?(?: "(.*)")?$')
 
 
 def parse_dump(text: str) -> list[Node]:
@@ -71,7 +73,7 @@ def parse_dump(text: str) -> list[Node]:
             continue
         depth = len(m.group(1)) // 2
         node = Node(depth, int(m.group(2)), int(m.group(3)), int(m.group(4)),
-                    int(m.group(5)), m.group(6))
+                    int(m.group(5)), m.group(7), int(m.group(6)) if m.group(6) else None)
         while stack and stack[-1].depth >= depth:
             stack.pop()
         if stack:
@@ -121,14 +123,22 @@ def panel_texts(roots: list[Node]) -> list[dict]:
         for n in root.walk():
             group += 1
             if n.text is not None and n.text.strip() and on_screen(n.box):
-                out.append({"text": n.text, "box": n.box, "joined": False,
+                out.append({"text": n.text, "box": n.box, "joined": False, "weight": n.weight,
                             "group": -group if n.parent is None else id(n.parent)})
             labels = [k for k in n.kids if k.text is not None and on_screen(k.box)]
             if len(labels) >= 2:
                 joined = "".join(k.text for k in labels)
+                weights = {k.weight for k in labels}
                 out.append({"text": joined, "box": union([k.box for k in labels]),
-                            "joined": True, "group": id(n)})
+                            "joined": True, "group": id(n),
+                            "weight": weights.pop() if len(weights) == 1 else None})
     return out
+
+
+def css_weight(font: str | None) -> int | None:
+    """The weight of a browser box's ``font`` ("24px 400"), None without."""
+    m = re.fullmatch(r"\s*[\d.]+px\s+(\d+)\s*", font or "")
+    return int(m.group(1)) if m else None
 
 
 def browser_texts(items: list[dict]) -> list[dict]:
@@ -136,7 +146,7 @@ def browser_texts(items: list[dict]) -> list[dict]:
     for it in items:
         box = (it["x"], it["y"], it["w"], it["h"])
         if it.get("text", "").strip() and on_screen(box):
-            out.append({"text": it["text"], "box": box})
+            out.append({"text": it["text"], "box": box, "weight": css_weight(it.get("font"))})
     return out
 
 
@@ -171,7 +181,10 @@ def match(panel: list[dict], browser: list[dict], reach: float = 160) -> tuple[l
             continue
         used_b.add(i)
         used_p.add(j)
-        rows.append(row(browser[i]["text"], browser[i]["box"], panel[j]["box"]))
+        r = row(browser[i]["text"], browser[i]["box"], panel[j]["box"])
+        if browser[i].get("weight") and panel[j].get("weight"):
+            r["weight"] = [browser[i]["weight"], panel[j]["weight"]]
+        rows.append(r)
     rows.sort(key=lambda r: (round(r["browser"][1]), round(r["browser"][0])))
     browser_only = [b for i, b in enumerate(browser) if i not in used_b and normalize(b["text"])]
     # The words of a run that matched as a whole aren't missing.

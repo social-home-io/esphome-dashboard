@@ -192,6 +192,49 @@ class WordsTest(unittest.TestCase):
         self.assertEqual(checks.word_failures(SHOT, {"unlock"}, set(), acc), (["unlock"], []))
 
 
+class WeightTest(unittest.TestCase):
+    DUMP = ("0 0 1280 800\n"
+            "  1168 19 81 44 @700 \"16:13\"\n"
+            "  164 26 83 23 @700 \"Overview\"\n"
+            "  148 577 176 18 @400 \"Shoes on…\"\n"
+            "  300 300 50 20 \"old dump\"\n")
+    BROWSER = [
+        {"x": 1168.2, "y": 18.5, "w": 83.8, "h": 42, "text": "16:13", "font": "36px 300"},
+        {"x": 164, "y": 26, "w": 83, "h": 24, "text": "Overview", "font": "20px 600"},
+        {"x": 148, "y": 575.5, "w": 80, "h": 18, "text": "Shoes on…", "font": "15px 500"},
+        {"x": 300, "y": 300, "w": 50, "h": 20, "text": "old dump", "font": "16px 700"},
+    ]
+
+    def test_dump_and_css_weights(self) -> None:
+        roots = boxes.parse_dump(self.DUMP)
+        labels = [n for n in roots[0].walk() if n.text]
+        self.assertEqual([n.weight for n in labels], [700, 700, 400, None])
+        self.assertEqual(labels[0].text, "16:13")
+        self.assertEqual(boxes.css_weight("24px 400"), 400)
+        self.assertEqual(boxes.css_weight("22.5px 600"), 600)
+        self.assertIsNone(boxes.css_weight("24px"))
+        self.assertIsNone(boxes.css_weight(None))
+
+    def test_classes(self) -> None:
+        self.assertEqual([checks.weight_class(w) for w in (200, 300, 400, 500, 600, 700)],
+                         ["light", "light", "regular", "regular", "bold", "bold"])
+
+    def test_bold_clock_over_a_light_one_fails(self) -> None:
+        rows, _, _ = boxes.match(boxes.panel_texts(boxes.parse_dump(self.DUMP)),
+                                 boxes.browser_texts(self.BROWSER))
+        acc = checks.load_accepted({})
+        # 600 → 700 and 500 → 400 are the same class; an unknown panel
+        # weight (an older dump) is never compared.
+        self.assertEqual(checks.weight_failures(SHOT, rows, acc),
+                         [{"text": "16:13", "browser": 300, "panel": 700}])
+        acc = checks.load_accepted({"weights": [{"screens": ["overview"], "text": r"^\d+:\d+$",
+                                                 "reason": "r"}]})
+        self.assertEqual(checks.weight_failures(SHOT, rows, acc), [])
+        self.assertTrue(acc.weights[0].used)
+        with self.assertRaises(checks.AcceptedError):
+            checks.load_accepted({"weights": [{"screens": ["overview"], "reason": "r"}]})
+
+
 class LogTest(unittest.TestCase):
     def test_logs(self) -> None:
         panel = ("\x1b[0;32m[I][app:1]: fine\x1b[0m\n"

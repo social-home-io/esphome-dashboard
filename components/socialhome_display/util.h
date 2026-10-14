@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -292,6 +293,31 @@ int css_ch(float n, int zero_px, int font_line);
 
 /// Characters (UTF-8 code points) in `text`.
 int utf8_glyphs(const std::string &text);
+
+/// "…" (U+2026): what the browser's `text-overflow: ellipsis` ends a cut text with.
+static constexpr const char *ELLIPSIS = "\xE2\x80\xA6";
+
+/// `text` cut to `max_w` px as CSS `text-overflow: ellipsis` cuts it: the
+/// longest prefix of whole characters that fits with "…" after it, or `text`
+/// itself when it fits. `width` measures a string in the label's font (LVGL
+/// fills its own dots mode with three full stops — never the browser's "…").
+std::string ellipsize(const std::string &text, int max_w, const std::function<int(const std::string &)> &width);
+
+/// The browser's Home timeline bar (.dash-block): just its icon, centred,
+/// when the server marks it narrow (under 10 % of the day) or the bar's
+/// content box — `bar_w` less `pad` either side — is `limit` px or less
+/// (`@container dash-block (max-width: 72px)`); else its title (a school
+/// bar's with 🎒 before it — and only a school bar's).
+bool bar_icon_only(bool narrow, int bar_w, int pad, int limit);
+
+/// Where LVGL draws a label's strikethrough (lv_draw_label.c): `y` from the
+/// top of the line, `h` thick — for a stroke drawn beside the label, over
+/// an emoji the browser's `line-through` crosses with the words.
+struct StrikeLine {
+  int y;
+  int h;
+};
+StrikeLine strike_line(int line_height, int base_line, int underline_thickness);
 
 /// `.dash-row` (flex-wrap): whether the time (`time_w`) and the main part
 /// (at least `main_min`) share one line `room` px wide, `gap` apart.
