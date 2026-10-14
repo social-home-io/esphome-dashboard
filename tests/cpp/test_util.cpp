@@ -561,3 +561,56 @@ TEST(pin_pad_keys_like_the_tablet) {
   CHECK(!pin_ready("123"));
   CHECK(pin_ready("1234"));
 }
+
+// The offline note sits where the tablet shows it: under the tab bar, first
+// in the alert slot, ahead of the @here banners (_view.html.j2).
+TEST(offline_note_under_the_tabs_above_the_banners) {
+  using S = TopSlot;
+  CHECK(top_slots(true, true, true) == (std::vector<S>{S::TABS, S::OFFLINE, S::ALERTS}));
+  CHECK(top_slots(true, false, true) == (std::vector<S>{S::TABS, S::ALERTS}));
+  CHECK(top_slots(true, true, false) == (std::vector<S>{S::TABS, S::OFFLINE}));
+  // A person's page and Overview woken at night have no tabs: the note leads.
+  CHECK(top_slots(false, true, false) == (std::vector<S>{S::OFFLINE}));
+  CHECK(top_slots(false, false, false).empty());
+}
+
+TEST(warning_sign_is_a_triangle_with_a_bang) {
+  for (int size : {16, 20, 30}) {
+    const auto strokes = warning_sign(size);
+    CHECK_EQ(strokes.size(), size_t{5});
+    for (const auto &s : strokes) {
+      CHECK(s.x1 >= 0 && s.x1 <= size && s.x2 >= 0 && s.x2 <= size);
+      CHECK(s.y1 >= 0 && s.y1 <= size && s.y2 >= 0 && s.y2 <= size);
+    }
+    // Closed: each side ends where the next begins; apex centred on top.
+    for (int k = 0; k < 3; k++) {
+      CHECK_EQ(strokes[k].x2, strokes[(k + 1) % 3].x1);
+      CHECK_EQ(strokes[k].y2, strokes[(k + 1) % 3].y1);
+    }
+    CHECK_EQ(strokes[0].x1, size / 2);
+    CHECK(strokes[0].y1 < size / 4);
+    // The bar sits above the dot, both on the centre line.
+    CHECK_EQ(strokes[3].x1, size / 2);
+    CHECK_EQ(strokes[4].x1, size / 2);
+    CHECK(strokes[3].y2 < strokes[4].y1);
+  }
+}
+
+TEST(refresh_arrow_turns_clockwise_open_at_the_top) {
+  for (int size : {20, 24, 36}) {
+    const RefreshArrow a = refresh_arrow(size);
+    // The gap is the top: 240°..300° (270° = 12 o'clock) is not drawn.
+    CHECK_EQ(a.start, 300);
+    CHECK_EQ(a.end, 240);
+    // The chevron starts at the arc's end, up and left of the centre …
+    for (const auto &h : a.head) {
+      CHECK(h.x1 < a.cx);
+      CHECK(h.y1 < a.cy);
+      CHECK(h.x2 >= 0 && h.x2 <= size && h.y2 >= 0 && h.y2 <= size);
+    }
+    const int dx = (a.head[0].x2 - a.head[0].x1) + (a.head[1].x2 - a.head[1].x1);
+    // … and points the way it turns (to the right at the top): its arms
+    // trail back to the left of the tip.
+    CHECK(dx < 0);
+  }
+}

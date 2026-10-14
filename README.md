@@ -194,8 +194,9 @@ cmake -S tests/cpp -B build/tests && cmake --build build/tests && ctest --test-d
 Screenshots without hardware (needs `libsdl2-dev`, `libssl-dev` and
 `libmbedtls-dev`): build
 `builds/host-sdl.yaml`, run the binary, and drive it through its command file
-(see `builds/host/host_driver.h`). It writes BMPs to
-`builds/.esphome/snapshots/socialhome-host/`. The host build has no mDNS: to
+(see `builds/host/host_driver.h`; each panel has its own, logged at start-up
+— [tests/README.md](tests/README.md)). It writes BMPs to
+`builds/.esphome/snapshots/socialhome-host/` (or `$ESPHOME_SNAPSHOT_DIR`). The host build has no mDNS: to
 see the **Found on this network** list, pass a fixed one, e.g.
 `-s discovery_stub "Social Home 1a2b3c|socialhome-1a2b3c|127.0.0.1|8100|api=1,id=1a2b3c"`.
 

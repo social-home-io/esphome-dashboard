@@ -539,4 +539,49 @@ std::string pin_after_key(const std::string &pin, const std::string &key) {
 
 bool pin_ready(const std::string &pin) { return pin.size() >= PIN_MIN_DIGITS; }
 
+std::vector<TopSlot> top_slots(bool tabs, bool offline, bool alerts) {
+  std::vector<TopSlot> slots;
+  if (tabs)
+    slots.push_back(TopSlot::TABS);
+  if (offline)
+    slots.push_back(TopSlot::OFFLINE);
+  if (alerts)
+    slots.push_back(TopSlot::ALERTS);
+  return slots;
+}
+
+std::vector<Stroke> warning_sign(int size) {
+  auto at = [size](int pct) { return size * pct / 100; };
+  const int mid = size / 2;
+  return {
+      {mid, at(8), at(96), at(92)},      // right side
+      {at(96), at(92), at(4), at(92)},   // base
+      {at(4), at(92), mid, at(8)},       // left side
+      {mid, at(38), mid, at(62)},        // the "!" bar
+      {mid, at(76), mid, at(78)},        // … and its dot
+  };
+}
+
+RefreshArrow refresh_arrow(int size) {
+  RefreshArrow a{};
+  a.cx = size / 2;
+  a.cy = size / 2;
+  a.r = size * 36 / 100;
+  // Open at the top (240°..300°), turning clockwise from 300° to 240°.
+  a.start = 300;
+  a.end = 240;
+  const float rad = static_cast<float>(a.end) * static_cast<float>(M_PI) / 180.0f;
+  const float ux = std::cos(rad), uy = std::sin(rad);  // outward, y down
+  const float dx = -uy, dy = ux;                       // the way it turns
+  const float len = static_cast<float>(a.r) * 0.45f;
+  const int tx = a.cx + static_cast<int>(std::lround(ux * a.r));
+  const int ty = a.cy + static_cast<int>(std::lround(uy * a.r));
+  for (int k = 0; k < 2; k++) {
+    const float side = k == 0 ? 1.0f : -1.0f;
+    a.head[k] = {tx, ty, tx + static_cast<int>(std::lround(len * (-dx + side * ux))),
+                 ty + static_cast<int>(std::lround(len * (-dy + side * uy)))};
+  }
+  return a;
+}
+
 }  // namespace esphome::socialhome_display

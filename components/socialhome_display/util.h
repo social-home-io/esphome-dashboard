@@ -273,4 +273,31 @@ void hand_end(float deg, int cx, int cy, int len, int *x, int *y);
 /// returned as 0..360).
 void wedge_angles(float minute_deg, int minutes, int *start, int *end);
 
+/// What leads a board's main column, top to bottom — the browser's
+/// _view.html.j2: the tab bar, then one alert slot (the offline note, then
+/// Home's @here banners), then the board itself. Boards without tabs (a
+/// person's page, Overview woken at night) start with the alert slot.
+enum class TopSlot : uint8_t { TABS, OFFLINE, ALERTS };
+std::vector<TopSlot> top_slots(bool tabs, bool offline, bool alerts);
+
+/// One stroke of a drawn icon, in px inside its size×size box.
+struct Stroke {
+  int x1, y1, x2, y2;
+};
+
+/// The offline note's ⚠ (`.dash-offline`): an outlined triangle with a "!"
+/// — Roboto carries no ⚠, so the panel draws it. Triangle sides, the bar,
+/// then the dot.
+std::vector<Stroke> warning_sign(int size);
+
+/// The offline note's ↻ (the retry button): a clockwise arc open at the top
+/// and a chevron at its end pointing the way it turns (Roboto has no ↻).
+/// Arc angles are LVGL's (0 = 3 o'clock, clockwise, degrees).
+struct RefreshArrow {
+  int cx, cy, r;
+  int start, end;
+  Stroke head[2];  ///< both start at the arc's end point
+};
+RefreshArrow refresh_arrow(int size);
+
 }  // namespace esphome::socialhome_display

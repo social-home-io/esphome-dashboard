@@ -3,7 +3,7 @@
 # the JSON parser (against the pinned Social Home fixtures), the layout /
 # URL helpers, the mDNS answer filtering, the sealed connect claim
 # (against Social Home's shared vectors), the panel's strings and the cached
-# theme.
+# theme, and the host panel's driver file.
 #
 #   cmake -S tests/cpp -B build/tests && cmake --build build/tests && ctest --test-dir build/tests -V
 
@@ -63,6 +63,7 @@ add_executable(socialhome_display_tests
   test_panel_strings.cpp
   test_theme_cache.cpp
   test_scheme.cpp
+  test_driver_path.cpp
   ${COMPONENT}/claim_seal.cpp
   ${COMPONENT}/discovery.cpp
   ${COMPONENT}/panel_strings.cpp
@@ -71,7 +72,7 @@ add_executable(socialhome_display_tests
   ${COMPONENT}/theme_cache.cpp
   ${COMPONENT}/util.cpp
 )
-target_include_directories(socialhome_display_tests PRIVATE ${COMPONENT})
+target_include_directories(socialhome_display_tests PRIVATE ${COMPONENT} ${CMAKE_CURRENT_SOURCE_DIR}/../../builds/host)
 target_link_libraries(socialhome_display_tests PRIVATE ArduinoJson pngle MbedTLS::mbedcrypto)
 target_compile_options(socialhome_display_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
 target_compile_definitions(socialhome_display_tests PRIVATE FIXTURES_DIR="${FIXTURES}")

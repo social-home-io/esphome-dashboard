@@ -12,10 +12,17 @@
 //   wait N             skip N ticks
 //
 // The file is removed once read; "done" is written to <file>.done after the
-// last step, so a script knows when to look.
+// last step, so a script knows when to look. Which file: driver_path.h (one
+// per panel; logged at start-up). A panel whose file another running panel
+// already holds (a <file>.lock flock) drives nothing and says so.
 #pragma once
 
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
+
 #include <cstdio>
+#include <cstdlib>
 #include <deque>
 #include <fstream>
 #include <sstream>
@@ -25,6 +32,8 @@
 #include "esphome/components/sdl/sdl_esphome.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
+
+#include "driver_path.h"
 
 namespace host_driver {
 
@@ -86,7 +95,35 @@ inline void tap(int x, int y) {
   lv_obj_send_event(obj, LV_EVENT_CLICKED, nullptr);
 }
 
-inline void tick(const char *path, esphome::sdl::Sdl *display) {
+/// The command file this panel reads, or "" when another panel has it.
+inline const std::string &resolved_path(const char *configured) {
+  static std::string path;
+  static bool resolved = false;
+  if (resolved)
+    return path;
+  resolved = true;
+  const std::string wanted = driver_path(configured, std::getenv("ESPHOME_PREFDIR"), static_cast<long>(getpid()));
+  // Held for the panel's lifetime; the kernel drops it when the panel exits.
+  const int fd = open((wanted + ".lock").c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0644);
+  if (fd < 0 || flock(fd, LOCK_EX | LOCK_NB) != 0) {
+    ESP_LOGE("host_driver",
+             "%s is already read by another host panel: this one takes no commands. Give each panel its own "
+             "(-s driver_file PATH, or its own ESPHOME_PREFDIR)",
+             wanted.c_str());
+    if (fd >= 0)
+      close(fd);
+    return path;
+  }
+  path = wanted;
+  ESP_LOGI("host_driver", "Reading commands from %s", path.c_str());
+  return path;
+}
+
+inline void tick(const char *configured, esphome::sdl::Sdl *display) {
+  const std::string &file = resolved_path(configured);
+  if (file.empty())
+    return;
+  const char *path = file.c_str();
   static int waiting = 0;
   static bool pending_done = false;
   {

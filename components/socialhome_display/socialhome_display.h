@@ -228,6 +228,8 @@ class SocialHomeDisplay : public Component {
   void build_tabs_(lv_obj_t *parent);
   void build_alerts_(lv_obj_t *parent, const std::vector<Mention> &alerts);
   void build_offline_(lv_obj_t *parent);
+  /// The offline note's drawn ⚠ (or ↻ with `refresh`), size×size.
+  lv_obj_t *note_icon_(lv_obj_t *parent, bool refresh, int size, uint32_t color);
   void build_overview_(lv_obj_t *parent);         // ui_overview.cpp
   void build_timeline_(lv_obj_t *parent, const Timeline &line);
   void build_messages_tab_(lv_obj_t *parent);     // ui_tabs.cpp
@@ -272,6 +274,7 @@ class SocialHomeDisplay : public Component {
   static void on_server_tap_(lv_event_t *event);
   static void on_keyboard_cancel_(lv_event_t *event);
   static void on_retry_(lv_event_t *event);
+  static void on_offline_retry_(lv_event_t *event);
   static void on_claim_done_(lv_event_t *event);
   static void on_pin_key_(lv_event_t *event);
   static void on_settings_press_(lv_event_t *event);
