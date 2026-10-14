@@ -74,6 +74,64 @@ TEST(ha_statuses) {
   CHECK_EQ(std::string(ha_status(false, false, false, true)), std::string("unpaired"));
 }
 
+TEST(privacy_lock_states) {
+  using P = PrivacyLock;
+  auto state = [](PanelPhase phase, bool known = true, bool offline = false, bool locking = false,
+                  bool unlocking = false) {
+    PrivacyLockInputs in;
+    in.phase = phase;
+    in.known = known;
+    in.offline = offline;
+    in.locking = locking;
+    in.unlocking = unlocking;
+    return privacy_lock_state(in);
+  };
+  // The dashboard is up: unlocked; a lock on its way: locking.
+  CHECK(state(PanelPhase::RUNNING) == P::UNLOCKED);
+  CHECK(state(PanelPhase::RUNNING, true, false, true) == P::LOCKING);
+  // Locked (the 423 lock screen): locked; an unlock (PIN or Home
+  // Assistant) being checked: unlocking.
+  CHECK(state(PanelPhase::LOCKED) == P::LOCKED);
+  CHECK(state(PanelPhase::LOCKED, true, false, false, true) == P::UNLOCKING);
+  // Still locked while the server can't be reached: the screen is.
+  CHECK(state(PanelPhase::LOCKED, true, true) == P::LOCKED);
+  // Paired but no answer yet (just booted): nothing to say.
+  CHECK(state(PanelPhase::RUNNING, false) == P::UNCHANGED);
+  CHECK(state(PanelPhase::STARTING) == P::UNCHANGED);
+  // Offline, or not paired / pairing / needing an update: it can't lock.
+  CHECK(state(PanelPhase::RUNNING, true, true) == P::JAMMED);
+  CHECK(state(PanelPhase::RUNNING, false, true) == P::JAMMED);
+  CHECK(state(PanelPhase::SETUP) == P::JAMMED);
+  CHECK(state(PanelPhase::SETUP, false) == P::JAMMED);
+  // A lock already sent while offline: try it (locking) rather than jammed.
+  CHECK(state(PanelPhase::RUNNING, true, true, true) == P::LOCKING);
+  // A stray in-flight flag that can't apply to the phase changes nothing.
+  CHECK(state(PanelPhase::RUNNING, true, false, false, true) == P::UNLOCKED);
+  CHECK(state(PanelPhase::LOCKED, true, false, true) == P::LOCKED);
+}
+
+TEST(failed_claim_phases) {
+  // Unpaired before the connect: back to the address screen.
+  CHECK(phase_after_failed_claim(false, false) == PanelPhase::SETUP);
+  CHECK(phase_after_failed_claim(false, true) == PanelPhase::SETUP);
+  // Paired: back to the old pairing's dashboard...
+  CHECK(phase_after_failed_claim(true, false) == PanelPhase::RUNNING);
+  // ...but a panel that was locked goes back to its lock screen: a failed
+  // or junk connect from Home Assistant must never lift the privacy lock.
+  CHECK(phase_after_failed_claim(true, true) == PanelPhase::LOCKED);
+}
+
+TEST(wrap_safe_waits) {
+  // No wait set.
+  CHECK(!waiting_until(1000, 0));
+  CHECK(waiting_until(1000, 2000));
+  CHECK(!waiting_until(2000, 2000));
+  CHECK(!waiting_until(3000, 2000));
+  // Across millis() wrapping.
+  CHECK(waiting_until(0xFFFFFF00u, 0x00000100u));
+  CHECK(!waiting_until(0x00000200u, 0x00000100u));
+}
+
 TEST(retry_after) {
   CHECK_EQ(parse_retry_after("12", 30), 12u);
   CHECK_EQ(parse_retry_after("0", 30), 1u);
@@ -542,6 +600,11 @@ TEST(lock_screen_rebuilds_only_for_what_it_shows) {
   b = a;
   b.forgot_pin = "Forgot the PIN?";
   CHECK(lock_screen_changed(a, b));
+  // Whether Home Assistant may unlock isn't drawn: no rebuild (it would
+  // wipe a PIN being typed for nothing).
+  b = a;
+  b.ha_unlock = !a.ha_unlock;
+  CHECK(!lock_screen_changed(a, b));
 }
 
 TEST(top_side_matches_the_tablet) {

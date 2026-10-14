@@ -10,6 +10,7 @@
 
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
+#include "esphome/core/optional.h"
 #include "esphome/core/preferences.h"
 #include "esphome/components/font/font.h"
 #include "esphome/components/lvgl/lvgl_esphome.h"
@@ -21,6 +22,11 @@
 #endif
 #ifdef USE_TEXT_SENSOR
 #include "esphome/components/text_sensor/text_sensor.h"
+#endif
+// The "Privacy lock" entity (common/api.yaml) is a template lock; builds
+// without Home Assistant's API (the host panel) have no lock component.
+#ifdef USE_LOCK
+#include "esphome/components/lock/lock.h"
 #endif
 
 #include "browser.h"
@@ -142,6 +148,9 @@ class SocialHomeDisplay : public Component {
   /// "Social Home key": the panel's X25519 public key (43-character
   /// base64url) Social Home seals the connect claim to.
   void set_key_sensor(text_sensor::TextSensor *sensor) { this->key_sensor_ = sensor; }
+  /// "Social Home HA unlock": "allowed" when the admin lets Home Assistant
+  /// lift the privacy lock, else "off".
+  void set_ha_unlock_sensor(text_sensor::TextSensor *sensor) { this->ha_unlock_sensor_ = sensor; }
 #endif
 
   void setup() override;
@@ -158,6 +167,21 @@ class SocialHomeDisplay : public Component {
   /// (claim_seal.h); the panel opens it and trades the claim for a token
   /// (POST /pair/claim). Replaces an existing pairing on success.
   void connect_from_home_assistant(const std::string &sealed);
+  /// The "Privacy lock" entity's lock_action: lock the panel (POST /lock),
+  /// as its lock button. Runs on the main loop (ESPHome's API server
+  /// handles Home Assistant's lock command in its loop()).
+  void lock_from_home_assistant();
+  /// The entity's unlock_action: lift the lock without the PIN
+  /// (POST /unlock/ha), when the admin allows it ("Home Assistant may
+  /// unlock wall panels").
+  void unlock_from_home_assistant();
+  /// The privacy lock as Home Assistant should see it (privacy_lock_state).
+  PrivacyLock privacy_lock() const;
+#ifdef USE_LOCK
+  /// The template lock's lambda: the state to publish, nullopt for none yet.
+  /// ESPHome's lock dedups, so it is published only when it changes.
+  optional<lock::LockState> privacy_lock_state() const;
+#endif
   Mode get_mode() const { return this->mode_; }
   /// The board path shown now ("/api/display/v1/home", …).
   const std::string &get_path() const { return this->current_path_; }
@@ -190,16 +214,21 @@ class SocialHomeDisplay : public Component {
   void handle_claim_(HttpResponse &response);
   void finish_claim_();
   void publish_status_();
+  /// The "Social Home HA unlock" sensor, when it changes.
+  void publish_ha_unlock_();
   void handle_board_(HttpResponse &response);
   void handle_theme_(HttpResponse &response);
   void handle_lock_(HttpResponse &response);
   void handle_unlock_(HttpResponse &response);
+  void handle_ha_unlock_(HttpResponse &response);
   void handle_ack_(HttpResponse &response, const std::string &key);
   /// The server dropped this panel (401): forget the token, pair again.
   void unpair_();
   /// POST /lock, /unlock {pin}, /ack {message_id, person_id}.
   void request_lock_();
   void request_unlock_();
+  /// POST /unlock/ha (no body): Home Assistant lifts the lock.
+  void request_ha_unlock_();
   void request_ack_(const std::string &key);
   const Mention *find_mention_(const std::string &key) const;
   /// The Map tab's picture: path with ?w=&h=&scheme= for this panel.
@@ -375,6 +404,8 @@ class SocialHomeDisplay : public Component {
   text_sensor::TextSensor *status_sensor_{nullptr};
   text_sensor::TextSensor *node_sensor_{nullptr};
   text_sensor::TextSensor *key_sensor_{nullptr};
+  text_sensor::TextSensor *ha_unlock_sensor_{nullptr};
+  const char *published_ha_unlock_{nullptr};
 #endif
 
   // persisted
@@ -418,6 +449,10 @@ class SocialHomeDisplay : public Component {
   uint32_t pair_request_{0};
   uint32_t lock_request_{0};
   uint32_t unlock_request_{0};
+  uint32_t ha_unlock_request_{0};
+  /// The server has said whether the panel is locked since it last
+  /// (re)started the dashboard: a board, a lock screen, an unlock.
+  bool lock_known_{false};
   std::map<uint32_t, std::string> ack_requests_;  ///< request id → mention key
   bool lock_refused_{false};  ///< 409 DASHBOARD_PIN_REQUIRED: no PIN after all
   uint32_t next_poll_{0};
@@ -428,6 +463,9 @@ class SocialHomeDisplay : public Component {
   /// screen gives up, and the pairing to go back to if the claim fails.
   uint32_t claim_request_{0};
   uint32_t claim_until_{0};
+  /// The panel was locked when the connect began: a connect that doesn't
+  /// pair goes back to the lock screen, never the dashboard.
+  bool claim_was_locked_{false};
   std::string claim_error_;
   std::string prev_server_;
   std::string prev_token_;
@@ -483,6 +521,7 @@ class SocialHomeDisplay : public Component {
   std::string pin_detail_;
   bool pin_error_{false};
   uint32_t pin_wait_until_{0};  ///< 429: no new try before this (millis)
+  uint32_t ha_unlock_wait_until_{0};  ///< 429 on /unlock/ha: no new try before this (millis)
   uint32_t press_started_{0};
   bool press_fired_{false};
   std::vector<std::unique_ptr<std::string>> payloads_;

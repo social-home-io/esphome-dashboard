@@ -56,6 +56,59 @@ std::string claim_request_body(const std::string &claim, const std::string &mode
 /// paired server doesn't answer (or speaks an API this firmware can't).
 const char *ha_status(bool paired, bool pairing, bool locked, bool unreachable);
 
+/// What the panel is doing, as far as its privacy lock goes.
+enum class PanelPhase : uint8_t {
+  STARTING,  ///< booting: not yet known whether the server has it locked
+  SETUP,     ///< no Wi-Fi, no server, pairing, connecting, update needed
+  RUNNING,   ///< the dashboard
+  LOCKED,    ///< the lock screen (423)
+};
+
+/// The "Privacy lock" entity's state for Home Assistant. Mirrors the
+/// lock states ESPHome's lock component has (lock::LockState); UNCHANGED:
+/// publish nothing (keep what Home Assistant has).
+enum class PrivacyLock : uint8_t { UNCHANGED, LOCKED, UNLOCKED, JAMMED, LOCKING, UNLOCKING };
+
+struct PrivacyLockInputs {
+  PanelPhase phase{PanelPhase::STARTING};
+  bool known{false};        ///< RUNNING: the server has answered since (else just started)
+  bool offline{false};      ///< the last poll didn't reach the server
+  bool locking{false};      ///< POST /lock in flight
+  bool unlocking{false};    ///< POST /unlock (PIN) or /unlock/ha in flight
+};
+
+/// The privacy lock as Home Assistant should see it, derived from what
+/// the panel is doing — so a lock or unlock from the PIN pad, by an admin
+/// in Social Home (seen at the next poll) or from Home Assistant all show.
+///
+///   phase     in flight       → state
+///   LOCKED    unlocking       → UNLOCKING
+///   LOCKED    —               → LOCKED (offline too: the screen stays locked)
+///   RUNNING   locking         → LOCKING
+///   RUNNING   offline         → JAMMED
+///   RUNNING   no answer yet   → UNCHANGED
+///   RUNNING   —               → UNLOCKED
+///   STARTING  —               → UNCHANGED
+///   SETUP     —               → JAMMED
+///
+/// JAMMED is Home Assistant's "the lock can't reach the state asked for":
+/// unpaired, pairing, an update needed or the server out of reach, a lock
+/// from Home Assistant can't be carried out. Keeping the last state instead
+/// would show a panel that can't lock as "unlocked" and lockable.
+PrivacyLock privacy_lock_state(const PrivacyLockInputs &in);
+
+/// Where a Connect from Home Assistant that didn't pair goes back to (a
+/// refused sealed value, or a claim the server turned down): the address
+/// screen when the panel wasn't paired (SETUP), else the old pairing —
+/// its lock screen when it was locked (the lock is still the server's),
+/// so a junk or failing connect can't lift the privacy lock, otherwise
+/// its dashboard. A claim that pairs starts afresh on the new server.
+PanelPhase phase_after_failed_claim(bool had_pairing, bool was_locked);
+
+/// Wrap-safe "a wait set to end at `until` (millis) is still running";
+/// 0 means no wait.
+bool waiting_until(uint32_t now, uint32_t until);
+
 /// Seconds from a Retry-After header (delta-seconds only), clamped to
 /// [1, 3600]; `fallback` when missing or unparsable.
 uint32_t parse_retry_after(const std::string &value, uint32_t fallback);

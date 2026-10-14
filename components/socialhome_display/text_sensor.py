@@ -11,6 +11,9 @@
   Home finds it in Home Assistant's entity registry by its name and seals
   the connect claim to it, so Home Assistant's recorder never sees the
   claim.
+- ``ha_unlock``: "allowed" when the household's admin lets Home Assistant
+  lift the privacy lock ("Home Assistant may unlock wall panels"), else
+  "off"; published once the server has said, and when it changes.
 """
 
 import esphome.codegen as cg
@@ -26,6 +29,7 @@ CONF_SOCIALHOME_DISPLAY_ID = "socialhome_display_id"
 CONF_STATUS = "status"
 CONF_NODE = "node"
 CONF_KEY = "key"
+CONF_HA_UNLOCK = "ha_unlock"
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -41,6 +45,10 @@ CONFIG_SCHEMA = cv.Schema(
             icon="mdi:key-variant",
             entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
         ),
+        cv.Optional(CONF_HA_UNLOCK): text_sensor.text_sensor_schema(
+            icon="mdi:lock-open-variant",
+            entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+        ),
     }
 )
 
@@ -53,3 +61,7 @@ async def to_code(config):
         cg.add(display.set_node_sensor(await text_sensor.new_text_sensor(node)))
     if key := config.get(CONF_KEY):
         cg.add(display.set_key_sensor(await text_sensor.new_text_sensor(key)))
+    if ha_unlock := config.get(CONF_HA_UNLOCK):
+        cg.add(
+            display.set_ha_unlock_sensor(await text_sensor.new_text_sensor(ha_unlock))
+        )

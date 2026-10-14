@@ -128,6 +128,35 @@ const char *ha_status(bool paired, bool pairing, bool locked, bool unreachable) 
   return "paired";
 }
 
+PrivacyLock privacy_lock_state(const PrivacyLockInputs &in) {
+  switch (in.phase) {
+    case PanelPhase::LOCKED:
+      return in.unlocking ? PrivacyLock::UNLOCKING : PrivacyLock::LOCKED;
+    case PanelPhase::RUNNING:
+      // A lock already on its way is tried even while the last poll failed.
+      if (in.locking)
+        return PrivacyLock::LOCKING;
+      if (in.offline)
+        return PrivacyLock::JAMMED;
+      return in.known ? PrivacyLock::UNLOCKED : PrivacyLock::UNCHANGED;
+    case PanelPhase::STARTING:
+      return PrivacyLock::UNCHANGED;
+    case PanelPhase::SETUP:
+    default:
+      return PrivacyLock::JAMMED;
+  }
+}
+
+PanelPhase phase_after_failed_claim(bool had_pairing, bool was_locked) {
+  if (!had_pairing)
+    return PanelPhase::SETUP;
+  return was_locked ? PanelPhase::LOCKED : PanelPhase::RUNNING;
+}
+
+bool waiting_until(uint32_t now, uint32_t until) {
+  return until != 0 && static_cast<int32_t>(now - until) < 0;
+}
+
 uint32_t parse_retry_after(const std::string &value, uint32_t fallback) {
   if (value.empty() || !std::all_of(value.begin(), value.end(), ::isdigit) || value.size() > 9)
     return fallback;
