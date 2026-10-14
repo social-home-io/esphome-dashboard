@@ -557,6 +557,17 @@ LineBox line_box(int font_line, int css_line) {
   return LineBox{above, leading - above, leading};
 }
 
+int inline_top(float css_line, int font_line, int font_base, float inner_css, int inner_line, int inner_base) {
+  // Half the leading above each glyph run, the baseline under its ascent.
+  const float baseline = (css_line - font_line) / 2 + (font_line - font_base);
+  const float top = baseline - (inner_line - inner_base) - (inner_css - inner_line) / 2;
+  return static_cast<int>(std::lround(top));
+}
+
+bool rail_names_home(BoardKind kind, const std::string &person_kind) {
+  return !(kind == BoardKind::PERSON && person_kind == "picture");
+}
+
 int top_side_width(int main_width, const Metrics &m) {
   return std::max(m.px(320), std::min(m.px(640), main_width - m.px(32) - m.px(320)));
 }
