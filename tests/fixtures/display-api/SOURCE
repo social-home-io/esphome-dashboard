@@ -6,4 +6,4 @@
 # Update: bump SOCIALHOME_REF, run `python3 scripts/display_api_contract.py --update`,
 # then fix the parser / host tests until `tests/cpp` passes again.
 SOCIALHOME_REPO=social-home-io/socialhome
-SOCIALHOME_REF=c7045ccf0e46c856129280275e782766ec84c405
+SOCIALHOME_REF=1b8b12353583e1d8c8d86cb9512933b950b1d516
