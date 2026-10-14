@@ -11,6 +11,26 @@ Write configs and code from the ESPHome documentation and source. Do not copy
 from projects whose licence is not compatible with MPL-2.0 (for example
 PolyForm Noncommercial).
 
+## Development container
+
+Open the repo in VS Code with the Dev Containers extension (or any
+devcontainer-capable editor / GitHub Codespaces) and it sets itself up
+with what CI uses: ESPHome at the version pinned in
+`.github/esphome.env`, yamllint, CMake for the host C++ tests, and SDL2 +
+Mbed TLS for the host SDL panel, plus Xvfb (`DISPLAY=:99`) and Chromium
+for screenshots.
+
+- `.venv/bin/esphome compile builds/host-sdl.yaml` — the panel UI on your
+  desktop, against a Social Home you point it at.
+- `.venv/bin/esphome compile builds/guition-jc8012p4a1.factory.yaml` — the
+  panel firmware.
+- `cmake --build build/tests && ctest --test-dir build/tests` — host tests.
+
+USB isn't passed into the container (it depends on your OS): flash with
+the [web installer](https://social-home-io.github.io/esphome-dashboard/) or
+`esphome run` on the host; OTA uploads (`esphome upload --device <ip>`)
+work from inside.
+
 ## Adding a device
 
 A new panel needs no app code changes as long as it is a colour touch panel of

@@ -16,3 +16,6 @@ site/
 
 # Host test build
 build/
+
+# Devcontainer uv cache
+.uv-cache/
