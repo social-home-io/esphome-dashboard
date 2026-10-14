@@ -15,6 +15,15 @@
 #ifdef USE_NETWORK
 #include "esphome/components/network/util.h"
 #endif
+#ifdef USE_ESP32
+#include <soc/soc_caps.h>
+#if !SOC_WIFI_SUPPORTED
+// No radio on the chip (the ESP32-P4's Wi-Fi is on a hosted co-processor):
+// the hardware RNG only has true entropy with the SAR ADC noise source on.
+#include <bootloader_random.h>
+#define SOCIALHOME_SAR_ENTROPY 1
+#endif
+#endif
 
 #include "parser.h"
 
@@ -205,18 +214,25 @@ void SocialHomeDisplay::save_state_() {
 // ---- panel key ----------------------------------------------------------------
 //
 // The X25519 key Social Home seals Connect-from-Home-Assistant claims to.
-// Made once (the hardware RNG: Wi-Fi is up before this LATE component, so
-// the RNG has its RF entropy), kept in NVS, renewed on Forget server; a
+// Made once from the hardware RNG, kept in NVS, renewed on Forget server; a
 // factory reset wipes NVS, so the panel makes a new one at the next boot.
+// ESP-IDF turns the bootloader's entropy source off before the app starts,
+// and a chip without its own radio (the ESP32-P4: Wi-Fi is on the hosted
+// ESP32-C6) never gets RF noise, so there the SAR ADC entropy source is
+// switched on just for key generation (nothing on these panels uses the ADC).
+// An all-zero stored key means "none" (a failed renewal wipes the old one).
 // Only the public half leaves the panel ("Social Home key" sensor,
 // X-Display-Key on /pair/claim).
 
 void SocialHomeDisplay::load_panel_key_() {
   StoredKey stored{};
   if (this->pref_key_.load(&stored)) {
+    uint8_t any = 0;
+    for (uint8_t b : stored.private_key)
+      any |= b;
     memcpy(this->panel_key_.private_key.data(), stored.private_key, PANEL_KEY_BYTES);
     wipe_bytes(&stored, sizeof(stored));
-    if (x25519_public_key(this->panel_key_.private_key, this->panel_key_.public_key)) {
+    if (any != 0 && x25519_public_key(this->panel_key_.private_key, this->panel_key_.public_key)) {
       this->panel_key_text_ = panel_key_text(this->panel_key_.public_key);
       return;
     }
@@ -228,18 +244,30 @@ void SocialHomeDisplay::load_panel_key_() {
 void SocialHomeDisplay::renew_panel_key_() {
   this->panel_key_.wipe();
   this->panel_key_text_.clear();
-  if (!generate_panel_key(this->panel_key_)) {
-    // Connect from Home Assistant can't work without it; pairing codes still do.
+#ifdef SOCIALHOME_SAR_ENTROPY
+  bootloader_random_enable();
+#endif
+  const bool made = generate_panel_key(this->panel_key_);
+#ifdef SOCIALHOME_SAR_ENTROPY
+  bootloader_random_disable();
+#endif
+  if (!made) {
+    // Connect from Home Assistant can't work without it; pairing codes still
+    // do. The old key must not come back after a reboot: store "none".
     ESP_LOGE(TAG, "Couldn't make a panel key");
     this->panel_key_.wipe();
+    StoredKey none{};
+    if (!this->pref_key_.save(&none) || !global_preferences->sync())
+      ESP_LOGE(TAG, "Couldn't clear the stored panel key");
     this->publish_panel_key_();
     return;
   }
   StoredKey stored{};
   memcpy(stored.private_key, this->panel_key_.private_key.data(), PANEL_KEY_BYTES);
-  this->pref_key_.save(&stored);
+  const bool saved = this->pref_key_.save(&stored);
   wipe_bytes(&stored, sizeof(stored));
-  global_preferences->sync();
+  if (!saved || !global_preferences->sync())
+    ESP_LOGE(TAG, "Couldn't store the panel key; a reboot will bring back the previous one");
   this->panel_key_text_ = panel_key_text(this->panel_key_.public_key);
   ESP_LOGI(TAG, "New panel key %s", this->panel_key_text_.c_str());
   this->publish_panel_key_();
@@ -494,6 +522,18 @@ void SocialHomeDisplay::refuse_claim_() {
   // One already being claimed carries on.
   if (this->mode_ == Mode::CLAIMING && this->claim_request_ != 0)
     return;
+  if (this->token_.empty() && this->mode_ != Mode::CLAIMING) {
+    // Unpaired: a request that didn't open changes nothing (a code being
+    // paired, an address being typed); it only says why nothing happened.
+    if (this->mode_ == Mode::NO_SERVER) {
+      this->error_ = this->str_("claim_sealed");
+      this->dirty_ = true;
+    } else if (this->mode_ == Mode::PAIRING) {
+      this->pair_note_ = this->str_("claim_sealed");
+      this->dirty_ = true;
+    }
+    return;
+  }
   if (this->mode_ != Mode::CLAIMING) {
     this->prev_server_ = this->token_.empty() ? std::string() : this->server_;
     this->prev_token_ = this->token_;
@@ -507,11 +547,12 @@ void SocialHomeDisplay::refuse_claim_() {
   this->claim_request_ = 0;
   this->claim_error_ = this->str_("claim_sealed");
   if (this->prev_token_.empty()) {
-    // Unpaired: the address screen shows why.
+    // A failed claim's screen, unpaired: the address screen shows why.
     this->finish_claim_();
     return;
   }
-  // Paired: the reason for a while, then back to the dashboard.
+  // Paired: the reason for a while, then back to the dashboard (the
+  // pairing is kept).
   this->set_mode_(Mode::CLAIMING);
   this->claim_until_ = millis() + CLAIM_ERROR_MS;
 }

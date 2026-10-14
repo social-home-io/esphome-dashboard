@@ -22,8 +22,11 @@ namespace esphome::socialhome_display {
 
 namespace {
 
-// Only the mbedTLS functions (no struct fields): the same code builds
-// against Mbed TLS 3.6 (ESP-IDF, host tests) and 2.28 (older distros' libmbedcrypto).
+// Mbed TLS 3.6 on the panel (ESP-IDF) and in the host tests. The host SDL
+// build links the distro's libmbedcrypto (2.28 on Ubuntu CI runners), which
+// only that build exercises: the code sticks to functions present in both
+// lines and touches no struct fields. Small-order peer keys are refused by
+// the all-zero shared-secret check whatever the library does about them.
 
 constexpr const char ALPHABET[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -159,6 +162,9 @@ bool field(ArduinoJson::JsonObjectConst obj, const char *name, size_t want, std:
   if (!v.is<const char *>())
     return false;
   ArduinoJson::JsonString text = v.as<ArduinoJson::JsonString>();
+  // Length before decoding: nothing longer than the largest allowed field.
+  if (text.size() > (want != 0 ? (want * 4 + 2) / 3 : CLAIM_MAX_CT_TEXT_LEN))
+    return false;
   if (!b64url_decode(std::string(text.c_str(), text.size()), out))
     return false;
   return want == 0 || out.size() == want;
@@ -325,6 +331,8 @@ std::string claim_aad(const char *suite, const PanelKey &panel_pub) {
 }
 
 SealResult open_sealed_claim(const std::string &sealed, const PanelKeyPair &panel, OpenedClaim &out) {
+  if (sealed.size() > SEALED_MAX_LEN)
+    return SealResult::INVALID;
   ArduinoJson::JsonDocument doc;
   if (ArduinoJson::deserializeJson(doc, sealed.data(), sealed.size()) || !doc.is<ArduinoJson::JsonObjectConst>())
     return SealResult::INVALID;

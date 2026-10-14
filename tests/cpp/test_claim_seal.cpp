@@ -209,3 +209,22 @@ TEST(b64url_canonical_only) {
   CHECK(!b64url_decode(std::string("QQ\0Q", 4), out));
   CHECK(out.empty());
 }
+
+TEST(claim_seal_size_limits) {
+  CHECK_EQ(CLAIM_MAX_CT_TEXT_LEN, size_t(2731));
+  ArduinoJson::JsonDocument doc = vectors();
+  PanelKeyPair panel = panel_of(doc);
+  std::string sealed = doc["valid"][0]["sealed"].as<std::string>();
+  OpenedClaim opened;
+  // Padded past the cap with JSON whitespace: refused before parsing.
+  std::string padded = sealed + std::string(SEALED_MAX_LEN - sealed.size(), ' ');
+  CHECK(open_sealed_claim(padded, panel, opened) == SealResult::OK);
+  padded += ' ';
+  CHECK(open_sealed_claim(padded, panel, opened) == SealResult::INVALID);
+  // A ct text longer than 2048 bytes' worth is refused before decoding.
+  std::string head = R"({"suite":"x25519-hkdf-sha256-aes256gcm","epk":"KIqQOwZFquk4ySsZiWu5niDasjjTL_cmMR3osnf1rQk",)"
+                     R"("nonce":"nvTV41IIoLUURRuL","ct":")";
+  OpenedClaim other;
+  CHECK(open_sealed_claim(head + std::string(2732, 'A') + "\"}", panel, other) == SealResult::INVALID);
+  CHECK(other.claim.empty());
+}

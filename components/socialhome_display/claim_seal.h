@@ -17,7 +17,8 @@
 // Mirrors socialhome/dashboard/claim_seal.py; the shared vectors in
 // docs/display-api/v1/fixtures/sealed-claim-vectors.json pin both sides.
 // Platform-free (mbedTLS only) so the host tests compile it as is: Mbed TLS
-// 3.6 from ESP-IDF on the panel, the system libmbedcrypto on the host build.
+// 3.6 from ESP-IDF on the panel and in the host tests, the distro's
+// libmbedcrypto on the host SDL build (see claim_seal.cpp).
 #pragma once
 
 #include <array>
@@ -41,6 +42,10 @@ inline constexpr size_t PANEL_KEY_TEXT_LEN = 43;  ///< 32 bytes as unpadded base
 inline constexpr size_t CLAIM_NONCE_BYTES = 12;
 inline constexpr size_t CLAIM_TAG_BYTES = 16;
 inline constexpr size_t CLAIM_MAX_CT_BYTES = 2048;
+/// CLAIM_MAX_CT_BYTES as unpadded base64url: the longest ct text decoded.
+inline constexpr size_t CLAIM_MAX_CT_TEXT_LEN = (CLAIM_MAX_CT_BYTES * 4 + 2) / 3;  // 2731
+/// The whole sealed value: refused unparsed when longer.
+inline constexpr size_t SEALED_MAX_LEN = 3072;
 
 using PanelKey = std::array<uint8_t, PANEL_KEY_BYTES>;
 
