@@ -21,6 +21,9 @@ substitutions:
   font_size_night: "160"
   # Social Home to talk to; empty shows the address screen first.
   server_url: ""
+  # Stands in for the mDNS browse on the address screen (the host build has
+  # no mDNS): "name|host|ipv4|port|k=v,k=v;…"; empty hides the list.
+  discovery_stub: ""
   driver_file: /tmp/socialhome-host.cmd
 
 esphome:
@@ -79,6 +82,7 @@ socialhome_display:
   ui_scale: ${ui_scale}
   model: ${device_slug}
   server_url: ${server_url}
+  discovery_stub: ${discovery_stub}
   poll_interval: 10s
   time_id: host_time
   fonts:

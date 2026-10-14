@@ -5,7 +5,8 @@
 - `cpp/` — host C++ tests for the dashboard component: the JSON parser against
   every pinned Social Home fixture (the Connect from Home Assistant claim
   answers too), the layout / URL / emoji / request body helpers (text and
-  emoji runs), the map-picture fetch policy and the PNG decoders. `png_bench`
+  emoji runs), the map-picture fetch policy, the PNG decoders and which mDNS
+  answers the address screen lists (and the URL a tap sets). `png_bench`
   (built alongside, not a test) times the map picture's decode:
   `build/tests/png_bench map.png`.
   `cmake -S tests/cpp -B build/tests && cmake --build build/tests && ctest --test-dir build/tests`.
