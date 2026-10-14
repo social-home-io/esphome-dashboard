@@ -101,7 +101,8 @@ which pulls everything else from this repository.
 
 ### Updates
 
-Releases publish firmware and an update manifest on GitHub Pages. The panel
+Releases publish firmware and an update manifest on GitHub Pages; the
+installer site always serves the latest stable release. The panel
 exposes a **Firmware** update entity (and a **Co-processor firmware** entity
 for the ESP32-C6 radio) that installs over the air.
 
@@ -117,7 +118,7 @@ common/                        shared packages: network, API, OTA, update,
 components/socialhome_display/ the dashboard (ESPHome external component)
 builds/<slug>[.factory].yaml   CI and release entry points
 docs/                          GitHub Pages web installer
-scripts/                       CI helpers (device matrix, update manifest)
+scripts/                       CI helpers (device matrix, update manifest, Pages site)
 tests/                         script tests, host C++ tests (tests/cpp) and the
                                pinned display API contract (tests/fixtures)
 builds/host-sdl.yaml           the app in a headless SDL window, for screenshots
@@ -211,6 +212,17 @@ Publishing that draft creates the tag and builds every device, attaches the
 images to the release and deploys the web installer plus update manifests to
 GitHub Pages (`release.yml`). Publish it as a pre-release to keep panels on
 the wall from being offered it.
+
+The web installer also deploys on every merge to `main` (`pages.yml`), so a
+change to `docs/` is live right after it merges. Pages keeps one site per
+repository and each deploy replaces all of it, so every deploy is built the
+same way by `scripts/build_site.py`: `docs/` from `main` plus the firmware and
+update manifests of the **latest published, non-pre-release release**. A merge
+never changes the firmware panels are offered, and a release deploys exactly
+what the next merge would. Before the first release the site shows a
+"No firmware release yet" state instead of install buttons. While a release is
+still building (its images aren't attached yet), a merge leaves the live site
+alone; the release's own deploy follows once the images are attached.
 
 ## License
 

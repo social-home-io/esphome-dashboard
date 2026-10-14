@@ -43,8 +43,6 @@ jobs:
     name: Build ${{ matrix.slug }}
     needs: prepare
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     strategy:
       fail-fast: true
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
@@ -65,63 +63,44 @@ jobs:
         run: esphome -s firmware_version "${TAG}" compile "builds/${{ matrix.slug }}.factory.yaml"
       - name: Collect firmware
         run: scripts/collect_firmware.sh "${{ matrix.slug }}" dist
-      - name: Attach to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${TAG}" dist/*.bin --clobber --repo "${GITHUB_REPOSITORY}"
       - uses: actions/upload-artifact@v7
         with:
           name: firmware-${{ matrix.slug }}
           path: dist/
           if-no-files-found: error
 
-  pages:
-    name: Deploy installer and update manifests
+  attach:
+    name: Attach images to the release
     needs: [prepare, build]
-    # A pre-release must not replace the update manifest every panel polls:
-    # it gets its binaries on the release page only.
-    if: ${{ !github.event.release.prerelease }}
+    # One upload once every device built: a merge deploying Pages meanwhile
+    # sees either no images (and keeps the live site) or all of them.
     runs-on: ubuntu-latest
     permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      contents: write
     env:
       TAG: ${{ needs.prepare.outputs.tag }}
     steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.TAG }}
       - uses: actions/download-artifact@v8
         with:
           pattern: firmware-*
           path: dist
           merge-multiple: true
-      - name: Assemble site
-        run: |
-          mkdir -p site
-          cp -r docs/. site/
-          cp devices/manifest.json site/devices.json
-          release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
-          jq -c '.devices[]' devices/manifest.json | while read -r device; do
-            slug=$(jq -r .slug <<<"${device}")
-            out="site/firmware/${slug}"
-            mkdir -p "${out}"
-            cp "dist/${slug}.factory.bin" "dist/${slug}.ota.bin" "${out}/"
-            python3 scripts/web_manifest.py \
-              --slug "${slug}" \
-              --name "$(jq -r .name <<<"${device}")" \
-              --chip-family "$(jq -r .chip_family <<<"${device}")" \
-              --version "${TAG}" \
-              --dir "${out}" \
-              --release-url "${release_url}"
-          done
-          find site -type f | sort
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: site
-      - id: deploy
-        uses: actions/deploy-pages@v5
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${TAG}" dist/*.bin --clobber --repo "${GITHUB_REPOSITORY}"
+
+  pages:
+    name: Deploy installer and update manifests
+    needs: attach
+    # A pre-release must not replace the update manifest every panel polls:
+    # it gets its binaries on the release page only. (pages.yml deploys the
+    # latest stable release, which skips pre-releases anyway.)
+    if: ${{ !github.event.release.prerelease }}
+    # Same build as every merge to main: docs/ from main plus the latest
+    # published release's firmware, which is now this one.
+    uses: ./.github/workflows/pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
