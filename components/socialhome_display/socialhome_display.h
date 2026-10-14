@@ -45,7 +45,8 @@ namespace esphome::socialhome_display {
 /// @here text (and the lock screen's household / date with the pad open);
 /// CAPTION the 15 px picture-view captions; TAG the 13 px bold tags and
 /// badges; MICRO the 11 px bold small caps of the picture view's labels;
-/// CLOCK_SMALL the 64 px light clock on a person's page.
+/// CLOCK_SMALL the 64 px light clock on a person's page; CLOCK_TAB the 36 px
+/// light clock at the end of the tab row (Messages, Notes, Map).
 /// New roles go last: the YAML `fonts:` keys index this list.
 enum class FontRole : uint8_t {
   SMALL,
@@ -70,6 +71,7 @@ enum class FontRole : uint8_t {
   TAG,
   MICRO,
   CLOCK_SMALL,
+  CLOCK_TAB,
   COUNT
 };
 
@@ -111,6 +113,18 @@ class SocialHomeDisplay : public Component {
   }
   void set_ui_scale(float scale) { this->ui_scale_ = scale; }
   void set_font(FontRole role, font::Font *font) { this->fonts_[static_cast<size_t>(role)] = font; }
+#ifdef USE_HOST
+  /// The weight (100–900) of a role's font file — the host panel's `dump`
+  /// names it, so a run can compare it with the browser's font-weight.
+  void set_font_weight(FontRole role, uint16_t weight) { this->font_weights_[static_cast<size_t>(role)] = weight; }
+  /// The weight of the font a label draws with; 0 when no role uses it.
+  int font_weight(const lv_font_t *font) const {
+    for (size_t k = 0; k < static_cast<size_t>(FontRole::COUNT); k++)
+      if (this->fonts_[k] != nullptr && this->fonts_[k]->get_lv_font() == font && this->font_weights_[k] != 0)
+        return this->font_weights_[k];
+    return 0;
+  }
+#endif
   void set_model(const std::string &model) { this->model_ = model; }
   void set_screen_off_minutes(uint32_t minutes) { this->screen_off_ms_ = minutes * 60000; }
   void set_night_brightness(float brightness) { this->night_brightness_ = brightness; }
@@ -345,6 +359,9 @@ class SocialHomeDisplay : public Component {
   int screen_height_{800};
   float ui_scale_{1.0f};
   font::Font *fonts_[static_cast<size_t>(FontRole::COUNT)]{};
+#ifdef USE_HOST
+  uint16_t font_weights_[static_cast<size_t>(FontRole::COUNT)]{};
+#endif
   std::string model_;
   uint32_t screen_off_ms_{10 * 60000};
   float night_brightness_{0.15f};

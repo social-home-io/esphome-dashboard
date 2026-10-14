@@ -67,6 +67,7 @@ FONT_ROLES = (
     "tag",
     "micro",
     "clock_small",
+    "clock_tab",
 )
 
 socialhome_display_ns = cg.esphome_ns.namespace("socialhome_display")
@@ -92,6 +93,16 @@ def _host_only(value):
     if not CORE.is_host:
         raise cv.Invalid(f"{CONF_DISCOVERY_STUB} is for the host build only")
     return cv.string_strict(value)
+
+
+def _font_weight(font_id):
+    """The weight (100–900) of a font: component's file, None if unknown
+    (a local file without one)."""
+    for conf in CORE.config.get("font", []):
+        if conf[CONF_ID].id == font_id.id:
+            weight = conf.get("file", {}).get("weight")
+            return int(weight) if isinstance(weight, int) else None
+    return None
 
 
 def _lv_uses(config):
@@ -158,14 +169,14 @@ async def to_code(config):
     cg.add(var.set_night_brightness(config[CONF_NIGHT_BRIGHTNESS]))
     for role, font_id in config[CONF_FONTS].items():
         index = FONT_ROLES.index(role)
-        cg.add(
-            var.set_font(
-                cg.RawExpression(
-                    f"static_cast<esphome::socialhome_display::FontRole>({index})"
-                ),
-                await cg.get_variable(font_id),
-            )
+        role_expr = cg.RawExpression(
+            f"static_cast<esphome::socialhome_display::FontRole>({index})"
         )
+        cg.add(var.set_font(role_expr, await cg.get_variable(font_id)))
+        # The screenshot run compares weights with the browser's (host only).
+        weight = _font_weight(font_id) if CORE.is_host else None
+        if weight:
+            cg.add(var.set_font_weight(role_expr, weight))
     if config.get(CONF_DISCOVERY_STUB):
         cg.add(var.set_discovery_stub(config[CONF_DISCOVERY_STUB]))
     if CONF_BACKLIGHT_ID in config:

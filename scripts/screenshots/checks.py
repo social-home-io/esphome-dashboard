@@ -11,7 +11,8 @@ A run of run.py passes when:
   (c) no panel text runs off the screen or is cut sideways by its
       container, and no two panel texts are drawn over each other;
   (d) both screens say the same words (clock times and numbers aside, which
-      tick between the two shots);
+      tick between the two shots), in the same weight class — light (≤ 350),
+      regular (≤ 550) or bold — where the panel's dump names its font weight;
   (e) the panel log has no ``[E]`` line and no crash, the household log no
       Python traceback.
 
@@ -27,6 +28,8 @@ accepted.json lists the known, accepted differences — every entry with a
               that side may say;
   layout      ``{"text": regex}`` — panel texts allowed off-screen, cut or
               overlapping;
+  weights     ``{"text": regex}`` — texts (normalized) allowed in another
+              weight class than the browser's;
   log         ``{"match": regex}`` — panel / household log lines allowed.
 """
 
@@ -79,9 +82,10 @@ class Accepted:
     texts: list[Rule]
     layout: list[Rule]
     log: list[Rule]
+    weights: list[Rule] = field(default_factory=list)
 
     def all(self) -> list[Rule]:
-        return self.offsets + self.texts + self.layout + self.log
+        return self.offsets + self.texts + self.layout + self.weights + self.log
 
 
 def load_accepted(data: dict) -> Accepted:
@@ -90,7 +94,7 @@ def load_accepted(data: dict) -> Accepted:
     if not isinstance(data, dict):
         raise AcceptedError("accepted.json: not an object")
     tol = float(data.get("tolerance_px", DEFAULT_TOLERANCE))
-    out: dict[str, list[Rule]] = {"offsets": [], "texts": [], "layout": [], "log": []}
+    out: dict[str, list[Rule]] = {"offsets": [], "texts": [], "layout": [], "weights": [], "log": []}
     for kind in out:
         for i, e in enumerate(data.get(kind, [])):
             where = f"accepted.json {kind}[{i}]"
@@ -111,7 +115,7 @@ def load_accepted(data: dict) -> Accepted:
                     rule.text = re.compile(pattern)
                 except re.error as err:
                     raise AcceptedError(f"{where}: bad regex: {err}") from None
-            elif kind in ("log", "layout"):
+            elif kind in ("log", "layout", "weights"):
                 raise AcceptedError(f"{where}: needs {'match' if kind == 'log' else 'text'}")
             if kind == "offsets":
                 mx = e.get("max", {})
@@ -126,7 +130,7 @@ def load_accepted(data: dict) -> Accepted:
                 if not rule.words:
                     raise AcceptedError(f"{where}: needs words")
             out[kind].append(rule)
-    return Accepted(tol, out["offsets"], out["texts"], out["layout"], out["log"])
+    return Accepted(tol, out["offsets"], out["texts"], out["layout"], out["log"], out["weights"])
 
 
 def shot_parts(name: str) -> dict[str, str]:
@@ -341,6 +345,32 @@ def word_failures(shot: dict[str, str], only_panel: set[str], only_browser: set[
         return out
 
     return left(only_panel, "panel"), left(only_browser, "browser")
+
+
+def weight_class(weight: int) -> str:
+    """Light, regular or bold: the steps a reader tells apart. The browser's
+    500 / 600 draw as the panel's 400 / 700 (it ships no medium / semibold
+    Roboto), so only a jump between classes is a difference."""
+    return "light" if weight <= 350 else "regular" if weight <= 550 else "bold"
+
+
+def weight_failures(shot: dict[str, str], rows: list[dict], acc: Accepted) -> list[dict]:
+    """Matched texts (rows with ``weight`` = [browser, panel]) drawn in
+    another weight class than the browser's, unless a rule accepts them."""
+    bad = []
+    for r in rows:
+        if "weight" not in r:
+            continue
+        b, p = r["weight"]
+        if weight_class(b) == weight_class(p):
+            continue
+        text = boxes.normalize(r["text"])
+        rules = [rule for rule in acc.weights if rule.scoped(shot) and rule.text.search(text)]
+        for rule in rules:
+            rule.used = True
+        if not rules:
+            bad.append({"text": r["text"], "browser": b, "panel": p})
+    return bad
 
 
 # ---- (e) logs -----------------------------------------------------------------

@@ -16,7 +16,8 @@ substitutions:
   # 32 px titles, 48 px names, 104 px clock, 160 px night (and lock) clock;
   # the lock screen's 96 px clock with the PIN pad open and 18 px text;
   # 20 px tabs, 24 px messages, 15 px picture captions, 13 px tags, 11 px
-  # small caps and the 64 px clock on a person's page.
+  # small caps, the 64 px clock on a person's page and the 36 px one in the
+  # tab row.
   font_size_small: "16"
   font_size_body: "22"
   font_size_large: "28"
@@ -34,6 +35,7 @@ substitutions:
   font_size_tag: "13"
   font_size_micro: "11"
   font_size_clock_small: "64"
+  font_size_clock_tab: "36"
 
 packages:
   base: !include ../../common/base.yaml
@@ -81,3 +83,4 @@ socialhome_display:
     tag: font_tag
     micro: font_micro
     clock_small: font_clock_small
+    clock_tab: font_clock_tab

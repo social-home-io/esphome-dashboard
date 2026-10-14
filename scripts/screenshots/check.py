@@ -7,7 +7,8 @@
 Reads the run.py output in RUN_DIR and asserts (checks.py has the details):
 every expected shot was taken, every text sits within the tolerance (4 px)
 of the browser's, no panel text is off-screen / cut sideways / drawn over
-another, both screens say the same words, and the logs have no errors —
+another, both screens say the same words in the same weight class (light /
+regular / bold), and the logs have no errors —
 except what scripts/screenshots/accepted.json accepts, each with a reason.
 
 Writes check.md (and check.json) into RUN_DIR, prints check.md, appends it
@@ -45,11 +46,11 @@ def check_shot(name: str, data: dict, acc: checks.Accepted) -> dict:
     out: dict = {"name": name, "screen": shot["screen"], "panel_only": shot["screen"] in naming.PANEL_ONLY}
     out["layout"] = checks.layout_failures(shot, checks.layout_problems(roots), acc)
     if out["panel_only"]:
-        out.update(texts=0, max_pos=0.0, max_size=0.0, offsets=[], only_panel=[], only_browser=[])
+        out.update(texts=0, max_pos=0.0, max_size=0.0, offsets=[], only_panel=[], only_browser=[], weights=[])
     else:
         p_texts = boxes.panel_texts(roots)
         b_texts = boxes.browser_texts(data.get("browser", []))
-        _, p_only, b_only = boxes.match(p_texts, b_texts)
+        matched, p_only, b_only = boxes.match(p_texts, b_texts)
         rows = list(data.get("offsets", [])) + checks.far_rows(p_only, b_only, p_texts, b_texts)
         out["texts"] = len(rows)
         out["max_pos"] = max((max(abs(r["dx"]), abs(r["dy"])) for r in rows), default=0.0)
@@ -58,7 +59,9 @@ def check_shot(name: str, data: dict, acc: checks.Accepted) -> dict:
         only_p, only_b = checks.word_differences(
             [p["text"] for p in p_texts if not p["joined"]], [b["text"] for b in b_texts])
         out["only_panel"], out["only_browser"] = checks.word_failures(shot, only_p, only_b, acc)
-    out["ok"] = not (out["layout"] or out["offsets"] or out["only_panel"] or out["only_browser"])
+        out["weights"] = checks.weight_failures(shot, matched, acc)
+    out["ok"] = not (out["layout"] or out["offsets"] or out["only_panel"] or out["only_browser"]
+                     or out["weights"])
     return out
 
 
@@ -86,7 +89,8 @@ def report(run_dir: str, meta: dict, general: list[str], shots: list[dict],
     lines += ["", "| shot | result | texts on both | largest Δx/Δy | largest Δw/Δh | problems |",
               "|---|---|---|---|---|---|"]
     for s in shots:
-        probs = len(s["offsets"]) + len(s["layout"]) + len(s["only_panel"]) + len(s["only_browser"])
+        probs = (len(s["offsets"]) + len(s["layout"]) + len(s["only_panel"]) + len(s["only_browser"])
+                 + len(s["weights"]))
         if s["panel_only"]:
             lines.append(f"| {s['name']} | {'✅' if s['ok'] else '❌'} | panel only | | | {probs or ''} |")
         else:
@@ -105,6 +109,8 @@ def report(run_dir: str, meta: dict, general: list[str], shots: list[dict],
             lines.append("- only the panel says: " + ", ".join(s["only_panel"]))
         if s["only_browser"]:
             lines.append("- only the browser says: " + ", ".join(s["only_browser"]))
+        lines += [f"- weight: {_cell(w['text'])!r} browser {w['browser']}, panel {w['panel']}"
+                  for w in s["weights"]]
     if unused:
         lines += ["", "Accepted differences not seen in this run (stale? remove them if no run needs them): "
                   + ", ".join(r.label() for r in unused)]
@@ -119,7 +125,11 @@ def suggest(shots: list[dict], margin: float = 3.0) -> dict:
     offsets: dict[str, dict] = {}
     texts: dict[tuple[str, str], set[str]] = {}
     layout: dict[str, set[str]] = {}
+    weights: dict[str, set[str]] = {}
     for s in shots:
+        for w in s.get("weights", []):
+            key = "^" + re.sub(r"\d+", r"\\d+", re.escape(boxes.normalize(w["text"]))) + "$"
+            weights.setdefault(key, set()).add(s["screen"])
         for r in s["offsets"]:
             norm = boxes.normalize(r["text"])
             key = "^" + re.sub(r"\d+", r"\\d+", re.escape(norm)) + "$"
@@ -137,6 +147,7 @@ def suggest(shots: list[dict], margin: float = 3.0) -> dict:
         "texts": [{"screens": [sc], "side": side, "words": sorted(ws), "reason": "TODO"}
                   for (sc, side), ws in sorted(texts.items())],
         "layout": [{"screens": sorted(sc), "text": t, "reason": "TODO"} for t, sc in layout.items()],
+        "weights": [{"screens": sorted(sc), "text": t, "reason": "TODO"} for t, sc in weights.items()],
     }
 
 

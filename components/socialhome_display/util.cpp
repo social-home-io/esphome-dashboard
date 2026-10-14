@@ -581,6 +581,33 @@ int utf8_glyphs(const std::string &text) {
   return n;
 }
 
+std::string ellipsize(const std::string &text, int max_w, const std::function<int(const std::string &)> &width) {
+  if (width(text) <= max_w)
+    return text;
+  // Character boundaries (UTF-8 lead bytes); the widths of the prefixes
+  // grow with their length, so the longest that fits is a binary search.
+  std::vector<size_t> ends;
+  for (size_t i = 1; i < text.size(); i++)
+    if ((static_cast<unsigned char>(text[i]) & 0xC0) != 0x80)
+      ends.push_back(i);
+  size_t lo = 0, hi = ends.size();  // the answer is ends[0 .. lo) fitting
+  while (lo < hi) {
+    size_t mid = (lo + hi) / 2;
+    if (width(text.substr(0, ends[mid]) + ELLIPSIS) <= max_w)
+      lo = mid + 1;
+    else
+      hi = mid;
+  }
+  return (lo == 0 ? std::string() : text.substr(0, ends[lo - 1])) + ELLIPSIS;
+}
+
+bool bar_icon_only(bool narrow, int bar_w, int pad, int limit) { return narrow || bar_w - 2 * pad <= limit; }
+
+StrikeLine strike_line(int line_height, int base_line, int underline_thickness) {
+  return {(line_height - base_line) * 2 / 3 + underline_thickness / 2,
+          underline_thickness > 0 ? underline_thickness : 1};
+}
+
 bool row_fits_beside(int room, int time_w, int gap, int main_min) { return time_w + gap + main_min <= room; }
 
 bool rail_names_home(BoardKind kind, const std::string &person_kind) {

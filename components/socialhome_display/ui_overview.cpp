@@ -415,17 +415,31 @@ void SocialHomeDisplay::build_timeline_(lv_obj_t *parent, const Timeline &line) 
         lv_obj_set_style_bg_image_src(b, stripes, LV_PART_MAIN);
         lv_obj_set_style_bg_image_tiled(b, true, LV_PART_MAIN);
       }
-      lv_obj_set_flex_align(b, block.narrow ? LV_FLEX_ALIGN_CENTER : LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+      // The browser shows a bar's icon only where its title has no room
+      // (centred); a wider bar shows the title — after 🎒 on a school bar.
+      const int bar_w = std::min(w, track_w - x);
+      const bool icon_only = bar_icon_only(block.narrow, bar_w, this->m_.px(8), this->m_.px(72));
+      lv_obj_set_flex_align(b, icon_only ? LV_FLEX_ALIGN_CENTER : LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                             LV_FLEX_ALIGN_CENTER);
-      if (!block.icon.empty()) {
+      if (icon_only && block.narrow)
+        lv_obj_set_style_pad_hor(b, 0, LV_PART_MAIN);  // .dash-block-narrow
+      if (!block.icon.empty() && (icon_only || block.kind == "school")) {
         lv_obj_t *icon = this->emoji_(b, block.icon, this->m_.emoji_sm());
         if (block.past)
           lv_obj_set_style_opa(icon, LV_OPA_50, LV_PART_MAIN);
       }
-      if (!block.narrow) {
-        lv_obj_t *t = this->text_(b, block.title, FontRole::BODY_BOLD, style.ink);
-        lv_obj_set_flex_grow(t, 1);
+      if (!icon_only) {
+        // .dash-block-title: as wide as its words, cut with "…" at the bar's
+        // end (text-overflow: ellipsis).
+        int room = bar_w - 2 * this->m_.px(8);
+        if (!block.icon.empty() && block.kind == "school")
+          room -= this->m_.emoji_sm() + this->m_.px(6);
+        const std::string shown = ellipsize(block.title, std::max(0, room), [this](const std::string &s) {
+          return this->text_width_(s, FontRole::BODY_BOLD);
+        });
+        lv_obj_t *t = this->text_(b, shown, FontRole::BODY_BOLD, style.ink);
         lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_CLIP);
+        lv_obj_set_style_max_width(t, std::max(0, room), LV_PART_MAIN);
       }
     }
     if (line.now_x.has_value()) {

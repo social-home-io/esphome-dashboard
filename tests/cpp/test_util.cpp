@@ -920,3 +920,39 @@ TEST(rows_wrap_where_the_browser_wraps_them) {
   // "All day" + "Project week" fit.
   CHECK(row_fits_beside(283, 68, 16, 144));
 }
+
+TEST(cut_texts_end_in_the_browsers_ellipsis) {
+  // 10 px a character, the "…" too.
+  auto width = [](const std::string &s) { return utf8_glyphs(s) * 10; };
+  CHECK_EQ(ellipsize("Shoes on!", 90, width), std::string("Shoes on!"));
+  CHECK_EQ(ellipsize("Shoes on!", 89, width), std::string("Shoes o\xE2\x80\xA6"));
+  CHECK_EQ(ellipsize("Shoes on!", 80, width), std::string("Shoes o\xE2\x80\xA6"));
+  CHECK_EQ(ellipsize("Shoes on!", 79, width), std::string("Shoes \xE2\x80\xA6"));
+  // Never three full stops, never half a character.
+  CHECK_EQ(ellipsize("F\xC3\xA4llt aus", 40, width), std::string("F\xC3\xA4l\xE2\x80\xA6"));
+  CHECK_EQ(ellipsize("\xC3\xA4\xC3\xB6\xC3\xBC", 20, width), std::string("\xC3\xA4\xE2\x80\xA6"));
+  // No room for a character: the ellipsis alone.
+  CHECK_EQ(ellipsize("Shoes", 12, width), std::string("\xE2\x80\xA6"));
+  CHECK_EQ(ellipsize("Shoes", 0, width), std::string("\xE2\x80\xA6"));
+  CHECK_EQ(ellipsize("", 0, width), std::string(""));
+}
+
+TEST(timeline_bars_show_their_icon_only_where_the_browser_does) {
+  // The server's narrow flag (under 10 % of the day) always.
+  CHECK(bar_icon_only(true, 300, 8, 72));
+  // Else the container query: a content box of 72 px or less.
+  CHECK(bar_icon_only(false, 88, 8, 72));
+  CHECK(!bar_icon_only(false, 89, 8, 72));
+  // Anna's "Work" bar: the title.
+  CHECK(!bar_icon_only(false, 362, 8, 72));
+}
+
+TEST(strike_line_sits_where_lvgl_strikes_a_label) {
+  // Roboto 22 px as ESPHome builds it: line 26, base line 5, 1 px rule.
+  StrikeLine s = strike_line(26, 5, 1);
+  CHECK_EQ(s.y, 14);
+  CHECK_EQ(s.h, 1);
+  // A font without an underline thickness: LVGL's 1 px.
+  CHECK_EQ(strike_line(26, 5, 0).h, 1);
+  CHECK_EQ(strike_line(26, 5, 2).y, 15);
+}

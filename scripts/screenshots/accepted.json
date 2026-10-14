@@ -11,8 +11,6 @@
 
   {"screens": ["overview", "offline"], "text": "^\\d+:\\d+$", "max": {"dy": 12, "dw": 24, "dh": 20},
    "reason": "The big clock: .dash-clock is line-height 1 on a 102.4 px font, the panel's label is the 104 px font's own line (Δh −18, Δy +8–12); the digits shown change the width."},
-  {"screens": ["overview", "offline"], "text": "^(school|schule|work|arbeit|home|zuhause)$", "max": {"dx": 34, "dw": 900},
-   "reason": "Box shape: the who's-where zone label and a today lane's label span their row on the panel, the browser box is the word (Δw; the today lanes' bars grow with the clock); 'Work' (a person on the way) starts after the 30 px car icon on the panel."},
   {"screens": ["overview", "offline", "messages", "picture"], "text": "^@leo shoes on!$", "max": {"dw": 32},
    "reason": "Message line with an emoji: the panel splits it into a label per word plus a picture; the run of labels is a few px narrower than the browser's text box (Δw)."},
   {"screens": ["overview", "offline", "messages", "reader"], "text": "^music is in room \\d+ today", "max": {"dw": 32, "dh": 30},
