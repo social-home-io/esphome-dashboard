@@ -220,6 +220,9 @@ class SocialHomeDisplay : public Component {
   /// Emoji drawn inside text of `font`: about the line height.
   int emoji_px_(FontRole font) const;
   lv_obj_t *caps_(lv_obj_t *parent, const std::string &text, uint32_t color);
+  /// Gives text in `font` the browser's line box, `css_line` design px a
+  /// line (line_box): a label, or a rich_ row and the labels in it.
+  void line_box_(lv_obj_t *obj, FontRole font, float css_line);
   lv_obj_t *emoji_(lv_obj_t *parent, const Emoji &emoji, int size);
   lv_obj_t *avatar_(lv_obj_t *parent, const std::string &person_id, int size);
   lv_obj_t *avatar_of_(lv_obj_t *parent, const std::string &initials, const std::string &avatar, Color color,

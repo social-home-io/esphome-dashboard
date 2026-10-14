@@ -542,6 +542,25 @@ int LaneGeometry::track_height(int rows) { return BAR_HEIGHT + 2 + ROW_PITCH * (
 
 int LaneGeometry::lane_height(int rows) { return BORDER + 2 * PAD + track_height(rows); }
 
+int LaneGeometry::track_top(int all_day_h, const Metrics &m) {
+  return m.px(PAD) + (all_day_h > 0 ? all_day_h + m.px(ALLDAY_GAP) : 0);
+}
+
+int LaneGeometry::lane_height(int rows, int all_day_h, const Metrics &m) {
+  return m.px(BORDER) + track_top(all_day_h, m) + m.px(track_height(rows)) + m.px(PAD);
+}
+
+LineBox line_box(int font_line, int css_line) {
+  const int leading = css_line - font_line;
+  // Half above (rounded down, also when negative), the rest below.
+  const int above = leading >= 0 ? leading / 2 : -((-leading + 1) / 2);
+  return LineBox{above, leading - above, leading};
+}
+
+int top_side_width(int main_width, const Metrics &m) {
+  return std::max(m.px(320), std::min(m.px(640), main_width - m.px(32) - m.px(320)));
+}
+
 RowStyle row_style(const AgendaRow &row, const Palette &p) {
   const bool cancelled = row.status == Status::CANCELLED;
   RowStyle style;

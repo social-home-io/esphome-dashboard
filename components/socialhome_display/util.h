@@ -233,16 +233,47 @@ std::vector<uint16_t> stripe_tile_rgb565(uint32_t fill, uint8_t opa, const std::
 /// Today's timeline lanes (`.dash-lane` / `.dash-track`), design px: a lane
 /// is its 1 px top border, 6 px padding, the track and 6 px again; the
 /// track is 44 px for one row, 48 px more per extra row (`.dash-rows-N`),
-/// a bar 42 px high at the top of its row.
+/// a bar 42 px high at the top of its row. A person's all-day items sit
+/// above the track as chips (`.dash-allday`), 4 px over it; the name and
+/// face stay centred on the lane.
 struct LaneGeometry {
   static constexpr int BORDER = 1;
   static constexpr int PAD = 6;
   static constexpr int ROW_PITCH = 48;
   static constexpr int BAR_HEIGHT = 42;
   static constexpr int TICKS_HEIGHT = 28;  ///< `.dash-ticks`: 1.75rem
+  static constexpr int ALLDAY_GAP = 4;     ///< `.dash-allday`: margin-block 0 4px
+  static constexpr int CHIP_PAD = 10;      ///< `.dash-chip`: padding-inline 10px
+  static constexpr int CHIP_GAP_X = 6;     ///< `.dash-allday`: gap 4px 6px
+  static constexpr int CHIP_GAP_Y = 4;
+  static constexpr float CHIP_LINE = 21.6f;  ///< `.dash-chip`: 16 px text, line-height 1.35
   static int track_height(int rows);
   static int lane_height(int rows);
+  /// Screen px under the lane's top border: where the track starts, under
+  /// `all_day_h` screen px of chips (0: none).
+  static int track_top(int all_day_h, const Metrics &m);
+  /// The lane's height in screen px, chips included.
+  static int lane_height(int rows, int all_day_h, const Metrics &m);
 };
+
+/// A CSS line box on an LVGL label, whose line is the font's own height
+/// (ascent + descent): the browser puts `css_line - font_line` of leading
+/// between lines and half of it above the first and below the last — so
+/// the glyphs land where the browser draws them. Negative when the CSS line
+/// is tighter than the font (the clock's line-height 1): the box then
+/// clips into the font's empty ascent and descent.
+struct LineBox {
+  int above;
+  int below;
+  int between;
+};
+LineBox line_box(int font_line, int css_line);
+
+/// `.dash-top-side` (NEXT and the messages): flex 1 1 20rem, at most
+/// 40rem, at the end of the Overview's top row, 32 px past the clock
+/// column, which keeps at least 20rem (the date). Screen px, for a
+/// `main_width` px column.
+int top_side_width(int main_width, const Metrics &m);
 
 /// How much of a picture (emoji, face) is left when it recedes, as the
 /// browser's `opacity` — which only ever sits on pictures, never on words.

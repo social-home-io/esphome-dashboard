@@ -443,6 +443,64 @@ TEST(lane_geometry_matches_the_tablet) {
   CHECK_EQ(LaneGeometry::lane_height(2), 105);
 }
 
+TEST(lane_all_day_chips_sit_above_the_track) {
+  const Metrics m = Metrics::compute(1280, 800, 1.0f);
+  // No chips: the track 6 px under the border, as before.
+  CHECK_EQ(LaneGeometry::track_top(0, m), 6);
+  CHECK_EQ(LaneGeometry::lane_height(1, 0, m), LaneGeometry::lane_height(1));
+  CHECK_EQ(LaneGeometry::lane_height(2, 0, m), LaneGeometry::lane_height(2));
+  // One line of chips (24 px: a 21.6 px line and its 1 px border): the
+  // track 4 px under them — the tablet's 84.6 px lane.
+  CHECK_EQ(LaneGeometry::track_top(24, m), 34);
+  CHECK_EQ(LaneGeometry::lane_height(1, 24, m), 85);
+  // Two lines of chips (24 + 4 + 24).
+  CHECK_EQ(LaneGeometry::lane_height(1, 52, m), 113);
+  // A bigger panel scales the spacing, not the measured chips.
+  const Metrics big = Metrics::compute(1920, 1200, 1.0f);
+  CHECK_EQ(LaneGeometry::track_top(36, big), 9 + 36 + 6);
+  CHECK_EQ(LaneGeometry::lane_height(1, 0, big), 2 + 9 + 66 + 9);
+}
+
+TEST(line_box_puts_the_leading_where_css_does) {
+  // Body text: Roboto 22 px is 26 px tall, the tablet's line 29.7 px.
+  LineBox b = line_box(26, 30);
+  CHECK_EQ(b.above, 2);
+  CHECK_EQ(b.below, 2);
+  CHECK_EQ(b.between, 4);
+  // Odd leading: the extra pixel goes below.
+  b = line_box(19, 22);
+  CHECK_EQ(b.above, 1);
+  CHECK_EQ(b.below, 2);
+  CHECK_EQ(b.between, 3);
+  // The clock (line-height 1): 122 px of font in a 102 px line box.
+  b = line_box(122, 102);
+  CHECK_EQ(b.above, -10);
+  CHECK_EQ(b.below, -10);
+  CHECK_EQ(b.between, -20);
+  b = line_box(38, 37);
+  CHECK_EQ(b.above + b.below, -1);
+  CHECK_EQ(b.above, -1);
+  // Same height: nothing changes.
+  b = line_box(38, 38);
+  CHECK_EQ(b.above, 0);
+  CHECK_EQ(b.below, 0);
+  CHECK_EQ(b.between, 0);
+}
+
+TEST(top_side_matches_the_tablet) {
+  // .dash-top-side: 40rem at the end of the row on the 1280 x 800 panel,
+  // with and without the rail.
+  const Metrics m = Metrics::compute(1280, 800, 1.0f);
+  CHECK_EQ(top_side_width(1104, m), 640);
+  CHECK_EQ(top_side_width(1224, m), 640);
+  // Narrower: the clock column keeps 20rem and the 32 px gap.
+  CHECK_EQ(top_side_width(900, m), 548);
+  // Never under 20rem itself.
+  CHECK_EQ(top_side_width(500, m), 320);
+  // A larger panel scales it.
+  CHECK_EQ(top_side_width(1656, Metrics::compute(1920, 1200, 1.0f)), 960);
+}
+
 TEST(map_height_matches_the_map_tab) {
   // .dash-mp-tab: calc(100dvh - 104px), never under 420 px.
   CHECK_EQ(Metrics::compute(1280, 800, 1.0f).map_height(), 696);

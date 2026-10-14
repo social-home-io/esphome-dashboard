@@ -21,19 +21,29 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
   const Overview &o = this->board_->overview;
   const int width = main_width(this->m_, this->board_->header.rail.shown);
   const int gap = this->m_.gap();
+  // .dash-home: the top row, Today and the columns, 20 px apart.
+  parent = this->column_(parent, this->m_.px(20));
+  lv_obj_set_width(parent, LV_PCT(100));
 
-  // ---- clock + who's home | next + messages
-  lv_obj_t *top = this->row_(parent, gap);
+  // ---- clock + who's home | next + messages (.dash-top). Every line gets
+  // the tablet's line box, so each block starts where it does there.
+  lv_obj_t *top = this->row_(parent, 0);
   lv_obj_set_width(top, LV_PCT(100));
-  lv_obj_set_flex_align(top, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-  lv_obj_t *left = this->column_(top, this->m_.px(8));
-  lv_obj_set_width(left, (width - gap) * 47 / 100);
+  lv_obj_set_flex_align(top, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+  const int side_w = top_side_width(width, this->m_);
+  lv_obj_t *left = this->column_(top, 0);
+  lv_obj_set_width(left, width - side_w - this->m_.px(32));
+  // .dash-clock: line-height 1.
   lv_obj_t *clock = this->clock_label_(left, FontRole::CLOCK, p.text);
-  lv_obj_set_style_text_line_space(clock, 0, LV_PART_MAIN);
-  this->text_(left, this->board_->header.clock.date, FontRole::LARGE, p.muted);
+  this->line_box_(clock, FontRole::CLOCK, 102.4f);
+  // .dash-date: 22 px, 6 px under the clock.
+  lv_obj_t *date = this->text_(left, this->board_->header.clock.date, FontRole::BODY, p.muted);
+  this->line_box_(date, FontRole::BODY, 29.7f);
+  lv_obj_set_style_margin_top(date, this->m_.px(6), LV_PART_MAIN);
   if (o.presence.has_value()) {
+    // .dash-presence: 20 px under the date, a 44 px row per group, 8 apart.
     lv_obj_t *who = this->column_(left, this->m_.px(8));
-    lv_obj_set_style_pad_top(who, this->m_.px(16), LV_PART_MAIN);
+    lv_obj_set_style_margin_top(who, this->m_.px(20), LV_PART_MAIN);
     const int face = this->m_.px(44);
     // Live data: offline the faces and icons fade, the zones stay muted.
     auto group = [&](const PresenceGroup &g) {
@@ -42,7 +52,7 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
       for (size_t k = 0; k < g.people.size(); k++) {
         this->live_picture_(this->avatar_(line, g.people[k], face));
         if (k < g.zones.size() && !g.zones[k].empty())
-          this->text_(line, g.zones[k], FontRole::BODY, p.muted);
+          this->text_(line, g.zones[k], FontRole::TEXT, p.muted);  // .dash-zone: 18 px
       }
     };
     if (o.presence->home.has_value() && !o.presence->home->people.empty())
@@ -51,23 +61,31 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
       group(*o.presence->away);
   }
 
+  // .dash-top-side: NEXT, 12 px, the messages.
   lv_obj_t *right = this->column_(top, this->m_.px(12));
-  lv_obj_set_flex_grow(right, 1);
+  lv_obj_set_width(right, side_w);
   if (o.next.has_value()) {
     const NextUp &n = *o.next;
+    // .dash-next: 14 px / 20 px inside a 1 px border, the 8 px colour bar
+    // on the start side; label, 8 px, the 38.4 px line, 8 px, the faces.
     lv_obj_t *card = this->card_(right);
     lv_obj_set_width(card, LV_PCT(100));
     lv_obj_set_style_border_side(card, LV_BORDER_SIDE_LEFT, LV_PART_MAIN);
     lv_obj_set_style_border_width(card, this->m_.px(8), LV_PART_MAIN);
     lv_obj_set_style_border_color(card, lv_color_hex(n.color.or_else(p.accent)), LV_PART_MAIN);
-    lv_obj_set_style_pad_row(card, this->m_.px(6), LV_PART_MAIN);
-    this->caps_(card, n.label, p.muted);
+    lv_obj_set_style_pad_ver(card, this->m_.px(14) + 1, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(card, this->m_.px(8), LV_PART_MAIN);
+    this->line_box_(this->caps_(card, n.label, p.muted), FontRole::LABEL, 20.8f);
     lv_obj_t *title = this->row_(card, this->m_.px(10));
-    if (!n.icon.empty())
+    int title_w = side_w - this->m_.px(8) - 2 * this->m_.card_pad();
+    if (!n.icon.empty()) {
       this->emoji_(title, n.icon, this->m_.emoji_md());
+      title_w -= this->m_.emoji_md() + this->m_.px(10);
+    }
     lv_obj_t *t = this->text_(title, n.time.empty() ? n.title : n.time + " " + n.title, FontRole::TITLE, p.text);
+    this->line_box_(t, FontRole::TITLE, 38.4f);
     lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_DOTS);
-    lv_obj_set_style_max_width(t, (width - gap) * 50 / 100, LV_PART_MAIN);
+    lv_obj_set_style_max_width(t, title_w, LV_PART_MAIN);
     lv_obj_t *meta = this->row_(card, this->m_.px(10));
     for (const auto &id : n.people)
       this->avatar_(meta, id, this->m_.px(32));
@@ -76,14 +94,25 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
       this->text_(meta, n.rel, FontRole::BODY, p.muted);
   }
   if (o.messages.has_value() && !o.messages->items.empty()) {
+    // .dash-msgs: 12 px padding (8 at the bottom); its head is the 48 px
+    // "See all ›" target pulled into that padding, 4 px over the rows.
     lv_obj_t *card = this->card_(right);
     lv_obj_set_width(card, LV_PCT(100));
+    lv_obj_set_style_pad_top(card, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_bottom(card, this->m_.px(8), LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(card, this->m_.px(12), LV_PART_MAIN);
+    lv_obj_set_style_pad_row(card, 0, LV_PART_MAIN);
     lv_obj_t *head = this->row_(card, 0);
-    lv_obj_set_width(head, LV_PCT(100));
+    lv_obj_set_size(head, LV_PCT(100), this->m_.tap_min());
+    lv_obj_set_style_margin_bottom(head, -this->m_.px(4), LV_PART_MAIN);
     lv_obj_set_flex_align(head, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    this->caps_(head, o.messages->label, p.muted);
+    lv_obj_t *label = this->caps_(head, o.messages->label, p.muted);
+    this->line_box_(label, FontRole::LABEL, 20.8f);
+    lv_obj_set_style_margin_left(label, this->m_.px(8), LV_PART_MAIN);
     if (o.messages->see_all && !this->board_->header.is_night) {
-      lv_obj_t *see = this->text_(head, this->str_("see_all") + " \xE2\x80\xBA", FontRole::LABEL, p.accent);
+      // .dash-see-all: 18 px bold, its 12 px padding 8 px into the card's.
+      lv_obj_t *see = this->text_(head, this->str_("see_all") + " \xE2\x80\xBA", FontRole::TEXT_BOLD, p.accent);
+      lv_obj_set_style_margin_right(see, this->m_.px(4), LV_PART_MAIN);
       lv_obj_add_flag(see, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_set_ext_click_area(see, this->m_.px(12));
       lv_obj_set_user_data(see, this);
@@ -98,6 +127,8 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
     const Today &t = *o.today;
     lv_obj_t *card = this->section_card_(parent, t.label);
     lv_obj_set_width(card, LV_PCT(100));
+    if (!t.label.empty())
+      this->line_box_(lv_obj_get_child(card, 0), FontRole::LABEL, 20.8f);  // .dash-label: line-height 1.3
     if (t.mode == "timeline" && t.timeline.has_value()) {
       // .dash-today: 16 px above and below; the label's 8 px margin.
       lv_obj_set_style_pad_ver(card, this->m_.px(16), LV_PART_MAIN);
@@ -197,7 +228,9 @@ void SocialHomeDisplay::build_overview_(lv_obj_t *parent) {
     lv_obj_set_flex_align(head, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     this->caps_(head, o.notes->label, p.muted);
     if (o.notes->see_all && !this->board_->header.is_night) {
-      lv_obj_t *see = this->text_(head, this->str_("see_all") + " \xE2\x80\xBA", FontRole::LABEL, p.accent);
+      // .dash-see-all: 18 px bold, its 12 px padding 8 px into the card's.
+      lv_obj_t *see = this->text_(head, this->str_("see_all") + " \xE2\x80\xBA", FontRole::TEXT_BOLD, p.accent);
+      lv_obj_set_style_margin_right(see, this->m_.px(4), LV_PART_MAIN);
       lv_obj_add_flag(see, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_set_ext_click_area(see, this->m_.px(12));
       lv_obj_set_user_data(see, this);
@@ -277,34 +310,57 @@ void SocialHomeDisplay::build_timeline_(lv_obj_t *parent, const Timeline &line) 
   }
 
   for (const auto &lane : line.lanes) {
-    // .dash-lane: a 1 px top border, 6 px padding around the track.
+    // .dash-lane: a 1 px top border, 6 px padding around the body — the
+    // person's all-day chips (.dash-allday), 4 px, then the track.
     const int track_h = this->m_.px(LaneGeometry::track_height(lane.rows));
-    const int height = this->m_.px(LaneGeometry::BORDER) + 2 * pad + track_h;
     lv_obj_t *row = this->box_(lanes);
-    lv_obj_set_size(row, inner, height);
+    lv_obj_set_width(row, inner);
     lv_obj_set_style_border_side(row, LV_BORDER_SIDE_TOP, LV_PART_MAIN);
     lv_obj_set_style_border_width(row, this->m_.px(LaneGeometry::BORDER), LV_PART_MAIN);
     lv_obj_set_style_border_color(row, lv_color_hex(p.border), LV_PART_MAIN);
 
+    int chips_h = 0;
+    if (!lane.all_day.empty()) {
+      // .dash-chip: 16 px text in a pill on the page colour, wrapping
+      // across the track's width.
+      lv_obj_t *chips = this->row_(row, this->m_.px(LaneGeometry::CHIP_GAP_X));
+      lv_obj_set_width(chips, track_w);
+      lv_obj_set_flex_flow(chips, LV_FLEX_FLOW_ROW_WRAP);
+      lv_obj_set_style_pad_row(chips, this->m_.px(LaneGeometry::CHIP_GAP_Y), LV_PART_MAIN);
+      lv_obj_set_pos(chips, track_x, pad);
+      for (const auto &all_day : lane.all_day) {
+        lv_obj_t *chip = this->box_(chips);
+        lv_obj_set_style_max_width(chip, track_w, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(chip, lv_color_hex(p.bg), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_color(chip, lv_color_hex(p.border), LV_PART_MAIN);
+        lv_obj_set_style_border_width(chip, 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_pad_hor(chip, this->m_.px(LaneGeometry::CHIP_PAD), LV_PART_MAIN);
+        lv_obj_t *t = this->text_(chip, all_day, FontRole::SMALL, p.text);
+        this->line_box_(t, FontRole::SMALL, LaneGeometry::CHIP_LINE);
+        lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_DOTS);
+        lv_obj_set_style_max_width(t, track_w - 2 * this->m_.px(LaneGeometry::CHIP_PAD) - 2, LV_PART_MAIN);
+      }
+      lv_obj_update_layout(chips);
+      chips_h = lv_obj_get_height(chips);
+    }
+    const int track_y = LaneGeometry::track_top(chips_h, this->m_);
+    lv_obj_set_height(row, LaneGeometry::lane_height(lane.rows, chips_h, this->m_));
+
+    // The face and name, centred on the lane's body (.dash-lane-head).
     lv_obj_t *who = this->row_(row, this->m_.px(8));
-    lv_obj_set_size(who, name_w, track_h);
+    lv_obj_set_size(who, name_w, track_y - pad + track_h);
     lv_obj_set_pos(who, 0, pad);
     this->avatar_(who, lane.person, this->m_.avatar_sm());
-    lv_obj_t *names = this->column_(who, 0);
-    lv_obj_set_flex_grow(names, 1);
     const Person *person = this->board_->header.find_person(lane.person);
-    lv_obj_t *name = this->text_(names, person != nullptr ? person->name : "", FontRole::BODY_BOLD, p.text);
+    lv_obj_t *name = this->text_(who, person != nullptr ? person->name : "", FontRole::BODY_BOLD, p.text);
     lv_label_set_long_mode(name, LV_LABEL_LONG_MODE_DOTS);
-    lv_obj_set_width(name, LV_PCT(100));
-    for (const auto &all_day : lane.all_day) {
-      lv_obj_t *t = this->text_(names, all_day, FontRole::SMALL, p.muted);
-      lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_DOTS);
-      lv_obj_set_width(t, LV_PCT(100));
-    }
+    lv_obj_set_flex_grow(name, 1);
 
     lv_obj_t *track = this->box_(row);
     lv_obj_set_size(track, track_w, track_h);
-    lv_obj_set_pos(track, track_x, pad);
+    lv_obj_set_pos(track, track_x, track_y);
     const uint32_t color = lane.color.or_else(p.accent);
     for (const auto &block : lane.blocks) {
       lv_obj_t *b = this->row_(track, this->m_.px(6));
@@ -342,12 +398,12 @@ void SocialHomeDisplay::build_timeline_(lv_obj_t *parent, const Timeline &line) 
       }
     }
     if (line.now_x.has_value()) {
-      // .dash-now-line: 3 px, 6 px past the track at both ends — through
-      // the lane's padding, so on the lane (a child is clipped to its
-      // parent), over the bars.
+      // .dash-now-line: 3 px, 6 px past the track at both ends — into the
+      // gap under the chips or the lane's padding, so on the lane (a child
+      // is clipped to its parent), over the bars.
       lv_obj_t *now = this->box_(row);
       lv_obj_set_size(now, std::max(2, this->m_.px(3)), track_h + 2 * pad);
-      lv_obj_set_pos(now, track_x + Metrics::pct(*line.now_x, track_w) - this->m_.px(1), 0);
+      lv_obj_set_pos(now, track_x + Metrics::pct(*line.now_x, track_w) - this->m_.px(1), track_y - pad);
       lv_obj_set_style_bg_color(now, lv_color_hex(live.accent), LV_PART_MAIN);
       lv_obj_set_style_bg_opa(now, live.picture_opa, LV_PART_MAIN);
       lv_obj_set_style_radius(now, this->m_.px(2), LV_PART_MAIN);
