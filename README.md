@@ -149,8 +149,8 @@ panel's — setup, pairing, errors, the PIN pad, settings, the Improv prompt.
 The panel keeps the last theme's language, colours and those strings in flash,
 so after a reboot or "Forget server" the setup screens still speak the
 household's language before any server answers. Its built-in English is only
-for a panel that never reached a server, and for the few strings the theme
-doesn't carry. Emoji are pictures (Twemoji, CC-BY 4.0) from the server, as the
+for a panel that never reached a server (and for a server older than the one
+pinned in `tests/fixtures/display-api/SOURCE`). Emoji are pictures (Twemoji, CC-BY 4.0) from the server, as the
 fonts carry none.
 
 ## Development
