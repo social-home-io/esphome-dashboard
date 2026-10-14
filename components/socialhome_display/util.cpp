@@ -564,6 +564,25 @@ int inline_top(float css_line, int font_line, int font_base, float inner_css, in
   return static_cast<int>(std::lround(top));
 }
 
+static constexpr float HINTING_SLACK = 0.0137f;  // of the font line, a glyph
+
+int css_width(int panel_width, int glyphs, int font_line) {
+  return panel_width + static_cast<int>(std::lround(glyphs * font_line * HINTING_SLACK));
+}
+
+int css_ch(float n, int zero_px, int font_line) {
+  return static_cast<int>(std::lround(n * (zero_px + font_line * HINTING_SLACK)));
+}
+
+int utf8_glyphs(const std::string &text) {
+  int n = 0;
+  for (unsigned char c : text)
+    n += (c & 0xC0) != 0x80;
+  return n;
+}
+
+bool row_fits_beside(int room, int time_w, int gap, int main_min) { return time_w + gap + main_min <= room; }
+
 bool rail_names_home(BoardKind kind, const std::string &person_kind) {
   return !(kind == BoardKind::PERSON && person_kind == "picture");
 }

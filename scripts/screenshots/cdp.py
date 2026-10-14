@@ -32,9 +32,12 @@ BOXES_JS = r"""(() => {
     if (el.closest('.dash-visually-hidden, .visually-hidden, .sr-only')) continue;
     const nodes = [...el.childNodes].filter(n => n.nodeType === 3 && n.data.trim());
     if (!nodes.length) continue;
+    // The words, not the spaces around them (a space between inline
+    // elements is drawn, but no panel label holds it).
+    const first = nodes[0], last = nodes[nodes.length - 1];
     const range = document.createRange();
-    range.setStartBefore(nodes[0]);
-    range.setEndAfter(nodes[nodes.length - 1]);
+    range.setStart(first, first.data.search(/\S/));
+    range.setEnd(last, last.data.replace(/\s+$/, '').length);
     const r = range.getBoundingClientRect();
     if (r.width < 1 || r.height < 1 || r.bottom < 0 || r.top > innerHeight) continue;
     const text = nodes.map(n => n.data).join(' ').replace(/\s+/g, ' ').trim();

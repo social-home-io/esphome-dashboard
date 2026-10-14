@@ -40,6 +40,12 @@ namespace esphome::socialhome_display {
 /// (160 px) and LOCK its clock with the PIN pad open; TEXT / TEXT_BOLD the
 /// lock screen's 18 px page text (the PIN button, alert, hint); TEXT_LARGE
 /// the 32 px night date and "Tomorrow" line, and the lock screen's date.
+/// MEDIUM / MEDIUM_BOLD the 20 px tab labels and NOW / NEXT room line;
+/// HEADING the 28 px bold NOW / NEXT titles; MESSAGE the 24 px message and
+/// @here text (and the lock screen's household / date with the pad open);
+/// CAPTION the 15 px picture-view captions; TAG the 13 px bold tags and
+/// badges; MICRO the 11 px bold small caps of the picture view's labels;
+/// CLOCK_SMALL the 64 px light clock on a person's page.
 /// New roles go last: the YAML `fonts:` keys index this list.
 enum class FontRole : uint8_t {
   SMALL,
@@ -56,6 +62,14 @@ enum class FontRole : uint8_t {
   TEXT_BOLD,
   LOCK_TIME,
   TEXT_LARGE,
+  MEDIUM,
+  MEDIUM_BOLD,
+  HEADING,
+  MESSAGE,
+  CAPTION,
+  TAG,
+  MICRO,
+  CLOCK_SMALL,
   COUNT
 };
 
@@ -223,6 +237,10 @@ class SocialHomeDisplay : public Component {
   /// Gives text in `font` the browser's line box, `css_line` design px a
   /// line (line_box): a label, or a rich_ row and the labels in it.
   void line_box_(lv_obj_t *obj, FontRole font, float css_line);
+  /// One line of `font` placed where the browser draws it in a `css_line`
+  /// line, by margins: the object stays the glyphs' own box (as the
+  /// browser's text box), the leading goes around it.
+  void line_margin_(lv_obj_t *obj, FontRole font, float css_line);
   /// How far below the top of a `css_line` line of `font` an inline box of
   /// `inner` text in its own `inner_css` line starts, both on one baseline
   /// (inline_top). `inner_css` 0: an inline span, as tall as its font.
@@ -231,8 +249,13 @@ class SocialHomeDisplay : public Component {
   lv_obj_t *avatar_(lv_obj_t *parent, const std::string &person_id, int size);
   lv_obj_t *avatar_of_(lv_obj_t *parent, const std::string &initials, const std::string &avatar, Color color,
                        Color ink, int size);
+  /// A picture-view section label (`.dash-pv-sec`, small caps).
+  lv_obj_t *pv_sec_(lv_obj_t *parent, const std::string &text);
+  /// A `.dash-tag` at 13 px (NEW beside a message's time).
+  lv_obj_t *tag_(lv_obj_t *parent, const std::string &text, uint32_t bg, uint32_t fg);
   lv_obj_t *pill_(lv_obj_t *parent, const std::string &text, uint32_t bg, uint32_t fg, FontRole font);
-  lv_obj_t *button_(lv_obj_t *parent, const std::string &text, bool primary, lv_event_cb_t cb, void *user_data);
+  lv_obj_t *button_(lv_obj_t *parent, const std::string &text, bool primary, lv_event_cb_t cb, void *user_data,
+                    FontRole font = FontRole::BODY_BOLD);
   lv_obj_t *check_mark_(lv_obj_t *parent, int size, uint32_t color, int width);
   lv_obj_t *poly_(lv_obj_t *parent, std::initializer_list<lv_point_precise_t> points, int width, uint32_t color);
   lv_obj_t *clock_label_(lv_obj_t *parent, FontRole font, uint32_t color);

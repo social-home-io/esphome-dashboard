@@ -28,47 +28,84 @@ void SocialHomeDisplay::build_messages_tab_(lv_obj_t *parent) {
     this->text_(texts, tab.empty->text, FontRole::BODY, p.muted);
     return;
   }
-  for (const auto &day : tab.days) {
-    this->caps_(parent, day.label, p.muted);
+  // .dash-chat-head: an 18 px line (the board's line-height 1.35) the name,
+  // the NEW tag and the time share a baseline in.
+  const float head_line = 24.3f;
+  for (size_t d = 0; d < tab.days.size(); d++) {
+    const auto &day = tab.days[d];
+    // .dash-chat-label: the dash-label look, 8 px over the list; a later
+    // day 20 px under the one before (.dash-chat-day + .dash-chat-day).
+    lv_obj_t *label = this->caps_(parent, day.label, p.muted);
+    this->line_box_(label, FontRole::LABEL, 20.8f);
+    lv_obj_set_style_margin_bottom(label, this->m_.px(8) - lv_obj_get_style_pad_row(parent, LV_PART_MAIN),
+                                   LV_PART_MAIN);
+    if (d > 0)
+      lv_obj_set_style_margin_top(label, this->m_.gap() - lv_obj_get_style_pad_row(parent, LV_PART_MAIN),
+                                  LV_PART_MAIN);
+    // .dash-chat-list: 4 px / 12 px padding, at most 52rem.
     lv_obj_t *card = this->card_(parent);
     lv_obj_set_width(card, std::min(width, this->m_.px(832)));
-    lv_obj_set_style_pad_all(card, this->m_.px(12), LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(card, this->m_.px(4), LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(card, this->m_.px(12), LV_PART_MAIN);
     lv_obj_set_style_pad_row(card, 0, LV_PART_MAIN);
     for (size_t k = 0; k < day.rows.size(); k++) {
       const Message &msg = day.rows[k];
-      lv_obj_t *row = this->row_(card, this->m_.px(16));
-      lv_obj_set_width(row, LV_PCT(100));
-      lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-      lv_obj_set_style_pad_ver(row, this->m_.px(12), LV_PART_MAIN);
-      lv_obj_set_style_pad_left(row, this->m_.px(14), LV_PART_MAIN);
-      if (msg.is_new) {
-        lv_obj_set_style_border_side(row, LV_BORDER_SIDE_LEFT, LV_PART_MAIN);
-        lv_obj_set_style_border_width(row, this->m_.px(6), LV_PART_MAIN);
-        lv_obj_set_style_border_color(row, lv_color_hex(p.accent), LV_PART_MAIN);
-      }
-      this->avatar_(row, msg.person, this->m_.avatar_md());
-      lv_obj_t *body = this->column_(row, this->m_.px(2));
-      lv_obj_set_flex_grow(body, 1);
-      lv_obj_t *head = this->row_(body, this->m_.px(10));
-      this->text_(head, msg.name, FontRole::LABEL, p.text);
-      if (msg.is_new)
-        this->pill_(head, upper(this->str_("new")), p.accent, p.accent_text, FontRole::LABEL);
-      // A new message's "11 min ago" is no longer true offline (data-rel).
-      if (!msg.time.empty() || !(msg.is_new && this->offline_))
-        this->text_(head, msg.time.empty() ? msg.when : msg.time, FontRole::SMALL, p.muted);
-      lv_obj_t *line = this->row_(body, this->m_.px(8));
-      lv_obj_set_width(line, LV_PCT(100));
-      if (!msg.icon.empty())
-        this->emoji_(line, msg.icon, this->m_.emoji_md());
-      lv_obj_t *text = this->rich_(line, msg.text, FontRole::LARGE, p.text);
-      lv_obj_set_width(text, 0);
-      lv_obj_set_flex_grow(text, 1);
-      if (k + 1 < day.rows.size()) {
+      if (k > 0) {
+        // .dash-chat-item + .dash-chat-item: a 1 px rule between rows.
         lv_obj_t *rule = this->box_(card);
         lv_obj_set_size(rule, LV_PCT(100), 1);
         lv_obj_set_style_bg_color(rule, lv_color_hex(p.border), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(rule, LV_OPA_COVER, LV_PART_MAIN);
       }
+      // .dash-chat-msg: 4 px margins, 12 px / 8 px padding after a 6 px
+      // start border (the accent on a new message), at least 72 px.
+      lv_obj_t *row = this->row_(card, this->m_.px(16));
+      lv_obj_set_width(row, LV_PCT(100));
+      lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+      lv_obj_set_style_min_height(row, this->m_.px(72), LV_PART_MAIN);
+      lv_obj_set_style_margin_ver(row, this->m_.px(4), LV_PART_MAIN);
+      lv_obj_set_style_pad_ver(row, this->m_.px(12), LV_PART_MAIN);
+      lv_obj_set_style_pad_hor(row, this->m_.px(8), LV_PART_MAIN);
+      lv_obj_set_style_radius(row, this->m_.px(10), LV_PART_MAIN);
+      lv_obj_set_style_border_side(row, LV_BORDER_SIDE_LEFT, LV_PART_MAIN);
+      lv_obj_set_style_border_width(row, this->m_.px(6), LV_PART_MAIN);
+      lv_obj_set_style_border_color(row, lv_color_hex(p.accent), LV_PART_MAIN);
+      lv_obj_set_style_border_opa(row, msg.is_new ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
+      this->avatar_(row, msg.person, this->m_.avatar_md());
+      lv_obj_t *body = this->column_(row, this->m_.px(2));
+      lv_obj_set_flex_grow(body, 1);
+      lv_obj_t *head = this->row_(body, this->m_.px(10));
+      lv_obj_set_height(head, this->m_.px(head_line));
+      lv_obj_set_flex_align(head, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+      lv_obj_t *who = this->text_(head, msg.name, FontRole::TEXT_BOLD, p.text);
+      lv_obj_set_style_margin_top(who, this->inline_top_(FontRole::TEXT_BOLD, head_line, FontRole::TEXT_BOLD),
+                                  LV_PART_MAIN);
+      // .dash-chat-when: 16 px, the NEW tag (13 px) and the time 8 px apart.
+      const int time_top = this->inline_top_(FontRole::TEXT_BOLD, head_line, FontRole::SMALL);
+      if (msg.is_new) {
+        lv_obj_t *tag = this->tag_(head, upper(this->str_("new")), p.accent, p.accent_text);
+        lv_obj_update_layout(tag);
+        const int font_line = lv_font_get_line_height(this->font_(FontRole::SMALL));
+        lv_obj_set_style_margin_top(tag, time_top - (lv_obj_get_height(tag) - font_line) / 2, LV_PART_MAIN);
+        lv_obj_set_style_margin_right(tag, this->m_.px(8) - this->m_.px(10), LV_PART_MAIN);
+      }
+      // A new message's "11 min ago" is no longer true offline (data-rel).
+      if (!msg.time.empty() || !(msg.is_new && this->offline_)) {
+        lv_obj_t *when = this->text_(head, msg.time.empty() ? msg.when : msg.time, FontRole::SMALL, p.muted);
+        lv_obj_set_style_margin_top(when, time_top, LV_PART_MAIN);
+      }
+      // .dash-chat-text: 24 px, line-height 1.3; the icon leads the words.
+      lv_obj_t *line = this->row_(body, this->m_.px(8));
+      lv_obj_set_width(line, LV_PCT(100));
+      lv_obj_set_flex_align(line, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+      if (!msg.icon.empty()) {
+        lv_obj_t *icon = this->emoji_(line, msg.icon, this->emoji_px_(FontRole::MESSAGE));
+        lv_obj_set_style_margin_top(icon, this->inline_top_(FontRole::MESSAGE, 31.2f, FontRole::MESSAGE), LV_PART_MAIN);
+      }
+      lv_obj_t *text = this->rich_(line, msg.text, FontRole::MESSAGE, p.text);
+      this->line_box_(text, FontRole::MESSAGE, 31.2f);
+      lv_obj_set_width(text, 0);
+      lv_obj_set_flex_grow(text, 1);
     }
   }
 }
@@ -159,14 +196,31 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
       this->text_(area, map.attribution, FontRole::SMALL, p.muted);
   }
 
+  // .dash-mp-side: 16 px / 12 px padding (8 px at the bottom), the
+  // dash-label 8 px over the rows, 4 px between rows.
   lv_obj_t *list = this->section_card_(row, map.title.empty() ? this->str_("map_title") : map.title);
   lv_obj_set_width(list, list_w);
   lv_obj_set_style_min_height(list, map_h, LV_PART_MAIN);
-  lv_obj_set_style_pad_row(list, this->m_.px(14), LV_PART_MAIN);
+  lv_obj_set_style_pad_top(list, this->m_.px(16), LV_PART_MAIN);
+  lv_obj_set_style_pad_bottom(list, this->m_.px(8), LV_PART_MAIN);
+  lv_obj_set_style_pad_hor(list, this->m_.px(12), LV_PART_MAIN);
+  lv_obj_set_style_pad_row(list, this->m_.px(4), LV_PART_MAIN);
+  lv_obj_t *heading = lv_obj_get_child(list, 0);
+  this->line_box_(heading, FontRole::LABEL, 20.8f);
+  // .dash-mp-side .dash-label: 8 px in.
+  lv_obj_set_style_margin_left(heading, this->m_.px(8), LV_PART_MAIN);
+  lv_obj_set_style_margin_bottom(heading, this->m_.px(8) - this->m_.px(4), LV_PART_MAIN);
+  // .dash-mp-row .dash-mp-av: 64 px with its 4 px frame, 16 px round.
   const int face = this->m_.px(64);
   for (const auto &spot : map.spots) {
+    // .dash-mp-row: at least 80 px, 8 px padding after a 6 px (unseen)
+    // start border, the face 14 px from the words, centred.
     lv_obj_t *item = this->row_(list, this->m_.px(14));
     lv_obj_set_width(item, LV_PCT(100));
+    lv_obj_set_style_min_height(item, this->m_.px(80), LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(item, this->m_.px(8), LV_PART_MAIN);
+    lv_obj_set_style_pad_left(item, this->m_.px(8 + 6), LV_PART_MAIN);
+    lv_obj_set_style_pad_right(item, this->m_.px(8), LV_PART_MAIN);
     const Person *person = this->board_->header.find_person(spot.person);
     lv_obj_t *frame = this->box_(item);
     lv_obj_set_size(frame, face, face);
@@ -177,7 +231,7 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
                                      ? map_frame_color(person->color.rgb, this->scheme_() != Scheme::LIGHT)
                                      : p.border;
     lv_obj_set_style_border_color(frame, lv_color_hex(frame_color), LV_PART_MAIN);
-    lv_obj_t *avatar = this->avatar_(frame, spot.person, face - this->m_.px(12));
+    lv_obj_t *avatar = this->avatar_(frame, spot.person, face - this->m_.px(8));
     lv_obj_center(avatar);
     // A spot over an hour old greys and fades its whole face — frame,
     // initials and photo, as one layer (`.dash-mp-av.dash-mp-stale`); the
@@ -186,12 +240,20 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
       this->grey_picture_(frame, GREY_STALE_SPOT);
       lv_obj_set_style_opa_layered(frame, OPA_STALE_FACE, LV_PART_MAIN);
     }
-    lv_obj_t *body = this->column_(item, this->m_.px(2));
+    lv_obj_t *body = this->column_(item, 0);
     lv_obj_set_flex_grow(body, 1);
-    this->text_(body, spot.name, FontRole::BODY_BOLD, p.text);
-    lv_obj_t *where = this->row_(body, this->m_.px(6));
-    this->emoji_(where, spot.icon, this->m_.px(20));
-    this->text_(where, spot.place, FontRole::BODY, p.text);
+    // .dash-mp-row-name: 22 px bold, line-height 1.25.
+    this->line_box_(this->text_(body, spot.name, FontRole::BODY_BOLD, p.text), FontRole::BODY_BOLD, 27.5f);
+    // .dash-mp-row-place: 18 px, line-height 1.35, the icon as a word.
+    const float place_line = 24.3f;
+    lv_obj_t *where = this->row_(body, lv_font_get_glyph_width(this->font_(FontRole::TEXT), ' ', 0));
+    lv_obj_set_flex_align(where, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *pic = this->emoji_(where, spot.icon, this->emoji_px_(FontRole::TEXT));
+    // The browser's emoji glyph advances ~1.05 Roboto lines.
+    lv_obj_set_style_margin_right(
+        pic, std::max(0, lv_font_get_line_height(this->font_(FontRole::TEXT)) * 105 / 100 - this->emoji_px_(FontRole::TEXT)),
+        LV_PART_MAIN);
+    this->line_box_(this->text_(where, spot.place, FontRole::TEXT, p.text), FontRole::TEXT, place_line);
     // "5 min ago" is no longer true offline (the browser's data-rel); a
     // stale spot says "⏱ last seen 1 h ago" in bold.
     const SpotAge age = spot_age(spot, this->offline_);
@@ -202,9 +264,20 @@ void SocialHomeDisplay::build_map_tab_(lv_obj_t *parent) {
       lv_obj_set_flex_align(line, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
       if (age.clock)
         this->emoji_(line, Emoji{"\xE2\x8F\xB1", "23f1"}, this->emoji_px_(font));
-      lv_obj_t *label = this->wrap_(line, age.text, font, p.muted);
-      lv_obj_set_width(label, 0);
-      lv_obj_set_flex_grow(label, 1);
+      // .dash-mp-row-age: 16 px on the board's 1.35 line.
+      lv_obj_t *label = this->text_(line, age.text, font, p.muted);
+      this->line_box_(label, font, 21.6f);
+      lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_WRAP);
+      // Wrapped where the browser wraps it: its text is a little wider
+      // than the panel's (css_width), so it breaks a line sooner.
+      lv_obj_update_layout(line);
+      int room = lv_obj_get_content_width(line);
+      if (age.clock)
+        room -= this->emoji_px_(font) + this->m_.px(4);
+      const int w = this->text_width_(age.text, font);
+      const int wider = css_width(w, utf8_glyphs(age.text), lv_font_get_line_height(this->font_(font))) - w;
+      if (room > 0)
+        lv_obj_set_width(label, std::min(w, room - wider));
     }
   }
 }

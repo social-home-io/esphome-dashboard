@@ -899,3 +899,24 @@ TEST(refresh_arrow_turns_clockwise_open_at_the_top) {
     CHECK(dx < 0);
   }
 }
+
+TEST(css_widths_allow_for_the_panel_hinting) {
+  // 22 px Roboto, a 26 px LVGL line: "08:15–09:00" (11 glyphs) is 120 px
+  // on the panel and 124 in the browser.
+  CHECK_EQ(css_width(120, 11, 26), 124);
+  CHECK_EQ(css_width(0, 0, 26), 0);
+  // .dash-row-time's 5.5ch: the "0" is 12 px on the panel, 12.35 in CSS.
+  CHECK_EQ(css_ch(5.5f, 12, 26), 68);
+  CHECK_EQ(utf8_glyphs("08:15\xE2\x80\x93" "09:00"), 11);
+  CHECK_EQ(utf8_glyphs(""), 0);
+}
+
+TEST(rows_wrap_where_the_browser_wraps_them) {
+  // Mia's school column (283 px inside a row): the 124 px time, 16 px gap
+  // and the 9rem main part don't fit — the subject goes under the time.
+  CHECK(!row_fits_beside(283, 124, 16, 144));
+  // With the panel's own 120 px they would have.
+  CHECK(row_fits_beside(283, 120, 16, 144));
+  // "All day" + "Project week" fit.
+  CHECK(row_fits_beside(283, 68, 16, 144));
+}
