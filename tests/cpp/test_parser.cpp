@@ -449,6 +449,15 @@ TEST(pair_claim_paired) {
   CHECK_EQ(st.display_id, std::string("9f2c41"));
 }
 
+TEST(pair_claim_contract_fixture) {
+  // The pinned server answer (docs/display-api/v1/fixtures/pair-claim.json).
+  std::string json = check::fixture("pair-claim.json");
+  PairStatus st;
+  CHECK(parse_pair_claim(200, json.data(), json.size(), st) == ClaimResult::PAIRED);
+  CHECK_EQ(st.token.size(), 43u);
+  CHECK_EQ(st.display_id, std::string("3f9a1c0b7e2d4a65"));
+}
+
 TEST(pair_claim_bad_200) {
   PairStatus st;
   const char *pending = R"({"status": "pending"})";
