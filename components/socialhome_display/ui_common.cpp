@@ -560,34 +560,36 @@ void SocialHomeDisplay::build_frame_(lv_obj_t *screen) {
   lv_obj_set_style_pad_top(main, this->m_.px(16), LV_PART_MAIN);
   lv_obj_set_style_pad_bottom(main, this->m_.pad(), LV_PART_MAIN);
   this->main_scroll_ = main;
-  if (this->offline_)
-    this->build_offline_(main);
   // At night the tabs stay hidden, woken or not (the browser's
   // `.dash-night .dash-tabs`): the server bounces every tab but Overview.
-  const bool tabs = !b.header.is_night;
+  const bool home = b.kind == BoardKind::OVERVIEW || b.kind == BoardKind::MESSAGES || b.kind == BoardKind::NOTES ||
+                    b.kind == BoardKind::MAP;
+  // The tab bar, then the alert slot (offline note, @here banners), as on
+  // the tablet; a person's page has no tabs and its own mentions.
+  for (TopSlot slot : top_slots(home && !b.header.is_night, this->offline_, home)) {
+    switch (slot) {
+      case TopSlot::TABS:
+        this->build_tabs_(main);
+        break;
+      case TopSlot::OFFLINE:
+        this->build_offline_(main);
+        break;
+      case TopSlot::ALERTS:
+        this->build_alerts_(main, b.header.alerts);
+        break;
+    }
+  }
   switch (b.kind) {
     case BoardKind::OVERVIEW:
-      if (tabs)
-        this->build_tabs_(main);
-      this->build_alerts_(main, b.header.alerts);
       this->build_overview_(main);
       break;
     case BoardKind::MESSAGES:
-      if (tabs)
-        this->build_tabs_(main);
-      this->build_alerts_(main, b.header.alerts);
       this->build_messages_tab_(main);
       break;
     case BoardKind::NOTES:
-      if (tabs)
-        this->build_tabs_(main);
-      this->build_alerts_(main, b.header.alerts);
       this->build_notes_tab_(main);
       break;
     case BoardKind::MAP:
-      if (tabs)
-        this->build_tabs_(main);
-      this->build_alerts_(main, b.header.alerts);
       this->build_map_tab_(main);
       break;
     case BoardKind::PERSON:
@@ -810,16 +812,110 @@ void SocialHomeDisplay::build_alerts_(lv_obj_t *parent, const std::vector<Mentio
   }
 }
 
+namespace {
+
+/// What an offline-note icon's draw callback paints (owned by the object).
+struct NoteIcon {
+  bool refresh{false};
+  uint32_t color{0};
+  int width{2};
+};
+
+void free_note_icon(lv_event_t *event) { delete static_cast<NoteIcon *>(lv_event_get_user_data(event)); }
+
+void draw_note_icon(lv_event_t *event) {
+  const auto *icon = static_cast<NoteIcon *>(lv_event_get_user_data(event));
+  lv_obj_t *obj = lv_event_get_current_target_obj(event);
+  lv_layer_t *layer = lv_event_get_layer(event);
+  lv_area_t area;
+  lv_obj_get_coords(obj, &area);
+  const int size = lv_area_get_width(&area);
+  lv_draw_line_dsc_t line;
+  lv_draw_line_dsc_init(&line);
+  line.color = lv_color_hex(icon->color);
+  line.width = icon->width;
+  line.round_start = 1;
+  line.round_end = 1;
+  auto stroke = [&](const Stroke &s) {
+    line.p1.x = area.x1 + s.x1;
+    line.p1.y = area.y1 + s.y1;
+    line.p2.x = area.x1 + s.x2;
+    line.p2.y = area.y1 + s.y2;
+    lv_draw_line(layer, &line);
+  };
+  if (!icon->refresh) {
+    for (const Stroke &s : warning_sign(size))
+      stroke(s);
+    return;
+  }
+  const RefreshArrow a = refresh_arrow(size);
+  lv_draw_arc_dsc_t arc;
+  lv_draw_arc_dsc_init(&arc);
+  arc.center.x = area.x1 + a.cx;
+  arc.center.y = area.y1 + a.cy;
+  arc.radius = static_cast<uint16_t>(a.r + icon->width / 2);
+  arc.width = icon->width;
+  arc.start_angle = a.start;
+  arc.end_angle = a.end;
+  arc.rounded = 1;
+  arc.color = line.color;
+  lv_draw_arc(layer, &arc);
+  for (const Stroke &s : a.head)
+    stroke(s);
+}
+
+}  // namespace
+
+lv_obj_t *SocialHomeDisplay::note_icon_(lv_obj_t *parent, bool refresh, int size, uint32_t color) {
+  lv_obj_t *obj = this->box_(parent);
+  lv_obj_set_size(obj, size, size);
+  auto *icon = new NoteIcon{refresh, color, std::max(2, size / 10)};
+  lv_obj_add_event_cb(obj, draw_note_icon, LV_EVENT_DRAW_MAIN_END, icon);
+  lv_obj_add_event_cb(obj, free_note_icon, LV_EVENT_DELETE, icon);
+  return obj;
+}
+
+void SocialHomeDisplay::on_offline_retry_(lv_event_t *event) {
+  // The browser's ↻ reloads the page; the panel asks again right away.
+  auto *self = static_cast<SocialHomeDisplay *>(lv_event_get_user_data(event));
+  self->next_poll_ = millis();
+}
+
 void SocialHomeDisplay::build_offline_(lv_obj_t *parent) {
+  // `.dash-offline`: ⚠, the words, a round ↻ at the end, in the error
+  // colours. On the picture view the words are for a screen reader only
+  // (dash-visually-hidden), so ↻ follows ⚠ — a child reads the pictures.
   const Palette &p = this->palette_();
-  const std::string text = fill_placeholder(this->str_("offline"), "time", this->offline_since_);
-  lv_obj_t *note = this->box_(parent);
+  const Board *b = this->board_.get();
+  const bool picture = b != nullptr && b->kind == BoardKind::PERSON && b->person_kind == "picture" &&
+                       b->picture.has_value();
+  lv_obj_t *note = this->row_(parent, this->m_.px(12));
   lv_obj_set_width(note, LV_PCT(100));
   lv_obj_set_style_bg_color(note, lv_color_hex(p.error_bg), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(note, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_radius(note, this->m_.px(10), LV_PART_MAIN);
-  lv_obj_set_style_pad_all(note, this->m_.px(12), LV_PART_MAIN);
-  this->wrap_(note, text, FontRole::BODY, p.error_text);
+  lv_obj_set_style_radius(note, this->m_.px(12), LV_PART_MAIN);
+  lv_obj_set_style_pad_ver(note, this->m_.px(8), LV_PART_MAIN);
+  lv_obj_set_style_pad_hor(note, this->m_.px(16), LV_PART_MAIN);
+  this->note_icon_(note, false, this->m_.px(20), p.error_text);
+  if (!picture) {
+    const std::string text = fill_placeholder(this->str_("offline"), "time", this->offline_since_);
+    lv_obj_t *words = this->text_(note, text, FontRole::BODY, p.error_text);
+    lv_label_set_long_mode(words, LV_LABEL_LONG_MODE_WRAP);
+    lv_obj_set_flex_grow(words, 1);
+  }
+  lv_obj_t *retry = this->box_(note);
+  const int d = this->m_.px(56);
+  lv_obj_set_size(retry, d, d);
+  lv_obj_set_style_radius(retry, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_border_color(retry, lv_color_hex(p.error_text), LV_PART_MAIN);
+  lv_obj_set_style_border_width(retry, std::max(1, this->m_.px(2)), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(retry, lv_color_hex(p.error_text), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(retry, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(retry, LV_OPA_20, LV_STATE_PRESSED);
+  lv_obj_add_flag(retry, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(retry, SocialHomeDisplay::on_offline_retry_, LV_EVENT_CLICKED, this);
+  lv_obj_t *arrow = this->note_icon_(retry, true, this->m_.px(24), p.error_text);
+  lv_obj_center(arrow);
 }
 
 }  // namespace esphome::socialhome_display

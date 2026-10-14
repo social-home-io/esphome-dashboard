@@ -11,7 +11,9 @@
   connect claim (X25519 / HKDF / AES-GCM and strict base64url) against
   Social Home's shared vectors (`sealed-claim-vectors.json`), the panel's
   strings (theme or built-in English, `{n}` / `{host}` filled safely) and the
-  cached theme (round-trip through the stored chunks, damage ignored). Mbed TLS 3.6
+  cached theme (round-trip through the stored chunks, damage ignored), where
+  the offline note sits (under the tabs, ahead of the @here banners) and its
+  drawn ⚠ / ↻, and which command file a host panel reads. Mbed TLS 3.6
   (the line ESP-IDF ships) is fetched and built with the tests. `png_bench`
   (built alongside, not a test) times the map picture's decode:
   `build/tests/png_bench map.png`.
@@ -21,3 +23,11 @@
   `SOURCE`. `python3 scripts/display_api_contract.py` checks the copy (CI does
   too); after the server changes the API, bump `SOCIALHOME_REF`, run it with
   `--update` and make the parser tests pass again.
+- Host panel (`builds/host-sdl.yaml`) — screenshots without hardware, driven
+  through a command file (`builds/host/host_driver.h`). Each panel reads its
+  own: `-s driver_file PATH` if given, else `$ESPHOME_PREFDIR/socialhome-host.cmd`,
+  else `/tmp/socialhome-host-<pid>.cmd`; the panel logs `Reading commands
+  from …` at start-up. Running two panels side by side, give each its own
+  `ESPHOME_PREFDIR` (it holds the panel's server and token too) and its own
+  `ESPHOME_SNAPSHOT_DIR`. A command file another running panel already
+  reads is refused with an error, rather than both running each other's taps.

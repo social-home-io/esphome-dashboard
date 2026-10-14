@@ -309,11 +309,22 @@ void SocialHomeDisplay::build_night_(lv_obj_t *screen) {
   const Palette &p = this->palette_();
   const Header &h = this->board_->header;
   // One tap anywhere shows the dashboard for a minute.
-  lv_obj_t *root = this->box_(screen);
+  lv_obj_t *root = this->column_(screen, 0);
   lv_obj_set_size(root, LV_PCT(100), LV_PCT(100));
   lv_obj_add_flag(root, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(root, SocialHomeDisplay::on_night_tap_, LV_EVENT_CLICKED, this);
-  lv_obj_t *col = this->column_(root, this->m_.px(12));
+  // Offline, the note stays up at night too (the browser hides the @here
+  // banners, not .dash-offline): on top, where the day board has it.
+  if (this->offline_) {
+    lv_obj_set_style_pad_hor(root, this->m_.pad(), LV_PART_MAIN);
+    lv_obj_set_style_pad_top(root, this->m_.px(16), LV_PART_MAIN);
+    this->build_offline_(root);
+  }
+  lv_obj_t *body = this->box_(root);
+  lv_obj_set_width(body, LV_PCT(100));
+  lv_obj_set_flex_grow(body, 1);
+  lv_obj_add_flag(body, LV_OBJ_FLAG_EVENT_BUBBLE);
+  lv_obj_t *col = this->column_(body, this->m_.px(12));
   lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_center(col);
   // The clock (long-press for settings) passes a tap up to the root.

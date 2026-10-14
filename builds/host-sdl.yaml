@@ -4,7 +4,11 @@
 #   .venv/bin/esphome compile builds/host-sdl.yaml
 #   .venv/bin/esphome run builds/host-sdl.yaml --no-logs   # or run the binary
 #
-# A screenshot script drives it through a command file (host/host_driver.h).
+# A screenshot script drives it through a command file (host/host_driver.h),
+# one per panel so two host panels on one machine never run each other's
+# commands: -s driver_file PATH if given, else $ESPHOME_PREFDIR/socialhome-host.cmd,
+# else /tmp/socialhome-host-<pid>.cmd (host/driver_path.h). The panel logs
+# the file it reads; one already held by another running panel is refused.
 
 substitutions:
   name: socialhome-host
@@ -26,12 +30,14 @@ substitutions:
   # Stands in for the mDNS browse on the address screen (the host build has
   # no mDNS): "name|host|ipv4|port|k=v,k=v;…"; empty hides the list.
   discovery_stub: ""
-  driver_file: /tmp/socialhome-host.cmd
+  # The screenshot driver's command file; empty picks one per panel (above).
+  driver_file: ""
 
 esphome:
   name: ${name}
   friendly_name: Social Home host panel
   includes:
+    - host/driver_path.h
     - host/host_driver.h
   project:
     name: social-home-io.esphome-dashboard

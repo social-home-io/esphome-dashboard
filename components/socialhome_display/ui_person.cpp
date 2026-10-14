@@ -178,6 +178,14 @@ void SocialHomeDisplay::build_person_(lv_obj_t *parent) {
   const Board &b = *this->board_;
   const PersonHead &who = b.person;
   const bool picture = b.person_kind == "picture" && b.picture.has_value();
+  if (picture) {
+    // The picture view is one block under the offline note (the tablet's
+    // .dash-pv): the dial floats at its top end, not over the note.
+    lv_obj_t *pv = this->column_(parent, lv_obj_get_style_pad_row(parent, LV_PART_MAIN));
+    lv_obj_set_width(pv, LV_PCT(100));
+    allow_overhang(pv, this->m_.px(12));
+    parent = pv;
+  }
 
   lv_obj_t *head = this->row_(parent, this->m_.px(20));
   lv_obj_set_width(head, LV_PCT(100));
