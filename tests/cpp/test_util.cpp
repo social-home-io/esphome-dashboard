@@ -285,3 +285,93 @@ TEST(map_fetch_policy) {
   f.reset();
   CHECK(f.due(dark, "\"b\"", 70000));
 }
+
+// ── Timeline bar colours ────────────────────────────────────────────────
+
+namespace {
+constexpr uint32_t DARK_SURFACE = 0x22201D;   // theme.json colors.dark.surface
+constexpr uint32_t LIGHT_SURFACE = 0xFFFFFF;  // colors.light.surface
+constexpr uint32_t NIGHT_SURFACE = 0x121110;  // colors.night.surface
+}  // namespace
+
+TEST(blend_rgb_composites) {
+  CHECK_EQ(blend_rgb(0xFFFFFF, 0x000000, 255), 0xFFFFFFu);
+  CHECK_EQ(blend_rgb(0xFFFFFF, 0x000000, 0), 0x000000u);
+  CHECK_EQ(blend_rgb(0xFFFFFF, 0x000000, 127), 0x7F7F7Fu);
+  CHECK_EQ(blend_rgb(0xC44D72, 0x22201D, 255), 0xC44D72u);
+  CHECK_EQ(blend_rgb(0x123456, 0x123456, 99), 0x123456u);
+}
+
+TEST(ink_on_matches_social_home) {
+  // contrast.ink_on: black on light fills, white on dark ones; the fixture
+  // lanes' server-picked ink is the same rule.
+  CHECK_EQ(ink_on(0xFFFFFF), 0x000000u);
+  CHECK_EQ(ink_on(0x000000), 0xFFFFFFu);
+  CHECK_EQ(ink_on(0xC44D72), 0x000000u);  // home.json u-anna
+  CHECK_EQ(ink_on(0x3F7D57), 0xFFFFFFu);  // home.json u-mia
+  CHECK_EQ(ink_on(0xAD780C), 0x000000u);  // home.json u-leo
+  CHECK_EQ(ink_on(0x357BBB), 0x000000u);  // home.json u-pascal
+  CHECK(contrast_ratio(0x000000, 0xFFFFFF) > 20.9);
+  CHECK(contrast_ratio(0x777777, 0x777777) < 1.0001);
+}
+
+TEST(bar_upcoming_keeps_lane_ink) {
+  BarStyle s = bar_style(0xC44D72, true, 0x000000, DARK_SURFACE, false, false);
+  CHECK_EQ(s.fill, 0xC44D72u);
+  CHECK_EQ(s.ink, 0x000000u);
+  CHECK_EQ(static_cast<int>(s.alpha), 255);
+  // The server's pick wins on an unfaded bar, even where ours would differ.
+  CHECK_EQ(bar_style(0xC44D72, true, 0x1F1D1A, LIGHT_SURFACE, false, false).ink, 0x1F1D1Au);
+  // No ink from the server: picked against the colour.
+  CHECK_EQ(bar_style(0x3F7D57, false, 0, LIGHT_SURFACE, false, false).ink, 0xFFFFFFu);
+}
+
+TEST(bar_past_dark_gets_light_label) {
+  // The bug: a past bar faded to half over the dark card kept the lane's
+  // black ink (faded too), so "Work" read dark on dark.
+  BarStyle s = bar_style(0xC44D72, true, 0x000000, DARK_SURFACE, false, true);
+  CHECK_EQ(s.fill, blend_rgb(0xC44D72, DARK_SURFACE, 127));
+  CHECK_EQ(s.ink, 0xFFFFFFu);
+  CHECK(contrast_ratio(s.ink, s.fill) > contrast_ratio(0x000000, s.fill));
+  CHECK(contrast_ratio(s.ink, s.fill) >= 4.5);
+  CHECK_EQ(bar_style(0xAD780C, true, 0x000000, DARK_SURFACE, false, true).ink, 0xFFFFFFu);
+  CHECK_EQ(bar_style(0x357BBB, true, 0x000000, NIGHT_SURFACE, false, true).ink, 0xFFFFFFu);
+}
+
+TEST(bar_past_light_gets_dark_label) {
+  // Faded toward white the bar lightens: white ink (Mia) turns black.
+  BarStyle s = bar_style(0x3F7D57, true, 0xFFFFFF, LIGHT_SURFACE, false, true);
+  CHECK_EQ(s.fill, blend_rgb(0x3F7D57, LIGHT_SURFACE, 127));
+  CHECK_EQ(s.ink, 0x000000u);
+  CHECK_EQ(bar_style(0xC44D72, true, 0x000000, LIGHT_SURFACE, false, true).ink, 0x000000u);
+}
+
+TEST(bar_school_is_toned_down) {
+  // School at 70 %: Leo's gold over the dark card is too dark for black.
+  BarStyle s = bar_style(0xAD780C, true, 0x000000, DARK_SURFACE, true, false);
+  CHECK_EQ(static_cast<int>(s.alpha), 178);
+  CHECK_EQ(s.fill, blend_rgb(0xAD780C, DARK_SURFACE, 178));
+  CHECK(contrast_ratio(s.ink, s.fill) >= contrast_ratio(s.ink ^ 0xFFFFFFu, s.fill));
+  // Past school: both fades.
+  BarStyle past = bar_style(0xAD780C, true, 0x000000, DARK_SURFACE, true, true);
+  CHECK(past.alpha < s.alpha);
+  CHECK_EQ(past.ink, 0xFFFFFFu);
+  CHECK_EQ(bar_style(0x3F7D57, true, 0xFFFFFF, DARK_SURFACE, true, false).ink, 0xFFFFFFu);
+}
+
+TEST(bar_label_always_the_better_ink) {
+  // Every state, every theme: the label is whichever of black / white reads
+  // better on the bar actually drawn (or the lane's ink when unfaded).
+  const uint32_t colors[] = {0xC44D72, 0x3F7D57, 0xAD780C, 0x357BBB, 0xF2C94C, 0x6B4E9B, 0xE07A3F, 0x2B2B2B};
+  const uint32_t surfaces[] = {LIGHT_SURFACE, DARK_SURFACE, NIGHT_SURFACE};
+  for (uint32_t color : colors) {
+    for (uint32_t surface : surfaces) {
+      for (int state = 0; state < 4; state++) {
+        bool school = state & 1, past = state & 2;
+        BarStyle s = bar_style(color, true, ink_on(color), surface, school, past);
+        uint32_t other = s.ink == 0x000000u ? 0xFFFFFFu : 0x000000u;
+        CHECK(contrast_ratio(s.ink, s.fill) >= contrast_ratio(other, s.fill));
+      }
+    }
+  }
+}

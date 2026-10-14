@@ -151,6 +151,34 @@ struct Metrics {
   static int pct(int percent, int total);
 };
 
+/// `fg` drawn at `alpha` (0 = invisible, 255 = opaque) over `bg`, both
+/// 0xRRGGBB: what LVGL's opacity (and CSS `opacity`) composites to.
+uint32_t blend_rgb(uint32_t fg, uint32_t bg, uint8_t alpha);
+
+/// WCAG contrast ratio of two 0xRRGGBB colours (1 … 21) — Social Home's
+/// contrast.contrast_ratio.
+double contrast_ratio(uint32_t a, uint32_t b);
+
+/// Black or white, whichever reads better on `fill` — Social Home's
+/// contrast.ink_on (the rule behind every lane's `ink`).
+uint32_t ink_on(uint32_t fill);
+
+/// How a bar on the Today timeline is painted.
+struct BarStyle {
+  uint32_t fill;   ///< the bar as drawn, already composited over the card
+  uint32_t ink;    ///< its label colour, picked against that fill
+  uint8_t alpha;   ///< how much of `color` is in `fill` (255: all of it)
+};
+
+/// A timeline bar in the lane's `color` on the card `surface`. School is
+/// toned down (70 %, the panel's stand-in for the browser's stripes) and a
+/// past bar is faded to half, as the browser's `.dash-past`. The fade goes
+/// into the fill — not over the label — and a faded bar's label is picked
+/// against the fill actually drawn (ink_on), so a past bar on a dark card
+/// keeps a light label instead of the lane's dark ink faded into the dark.
+/// An unfaded bar keeps the lane's own `ink` (when the server sent one).
+BarStyle bar_style(uint32_t color, bool has_ink, uint32_t ink, uint32_t surface, bool school, bool past);
+
 /// An analog clock hand: end point for `deg` (0 = 12 o'clock, clockwise)
 /// on a dial centred at (cx, cy) with hand length `len`.
 void hand_end(float deg, int cx, int cy, int len, int *x, int *y);

@@ -269,28 +269,32 @@ void SocialHomeDisplay::build_timeline_(lv_obj_t *parent, const Timeline &line) 
     lv_obj_set_size(track, track_w, height);
     lv_obj_set_pos(track, name_w, 0);
     const uint32_t color = lane.color.or_else(p.accent);
-    const uint32_t ink = lane.ink.or_else(p.text);
     for (const auto &block : lane.blocks) {
       lv_obj_t *b = this->row_(track, this->m_.px(6));
       int x = Metrics::pct(block.x, track_w);
       int w = std::max(this->m_.px(18), Metrics::pct(block.w, track_w));
       lv_obj_set_size(b, std::min(w, track_w - x), block_h);
       lv_obj_set_pos(b, x, block.row * lane_h + (lane_h - block_h) / 2);
-      lv_obj_set_style_bg_color(b, lv_color_hex(color), LV_PART_MAIN);
-      lv_obj_set_style_bg_opa(b, block.kind == "school" ? LV_OPA_70 : LV_OPA_COVER, LV_PART_MAIN);
+      // Faded bars (school, past) are composited here, so the label is
+      // picked against the colour actually drawn — never faded itself.
+      const BarStyle style =
+          bar_style(color, lane.ink.valid, lane.ink.rgb, p.surface, block.kind == "school", block.past);
+      lv_obj_set_style_bg_color(b, lv_color_hex(style.fill), LV_PART_MAIN);
+      lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_MAIN);
       lv_obj_set_style_radius(b, this->m_.px(6), LV_PART_MAIN);
       lv_obj_set_style_pad_hor(b, this->m_.px(8), LV_PART_MAIN);
       lv_obj_set_flex_align(b, block.narrow ? LV_FLEX_ALIGN_CENTER : LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                             LV_FLEX_ALIGN_CENTER);
-      if (!block.icon.empty())
-        this->emoji_(b, block.icon, this->m_.emoji_sm());
+      if (!block.icon.empty()) {
+        lv_obj_t *icon = this->emoji_(b, block.icon, this->m_.emoji_sm());
+        if (block.past)
+          lv_obj_set_style_opa(icon, LV_OPA_50, LV_PART_MAIN);
+      }
       if (!block.narrow) {
-        lv_obj_t *t = this->text_(b, block.title, FontRole::BODY_BOLD, ink);
+        lv_obj_t *t = this->text_(b, block.title, FontRole::BODY_BOLD, style.ink);
         lv_obj_set_flex_grow(t, 1);
         lv_label_set_long_mode(t, LV_LABEL_LONG_MODE_CLIP);
       }
-      if (block.past)
-        lv_obj_set_style_opa(b, LV_OPA_50, LV_PART_MAIN);
     }
     if (line.now_x.has_value()) {
       lv_obj_t *now = this->box_(track);
