@@ -62,6 +62,7 @@ add_executable(socialhome_display_tests
   test_claim_seal.cpp
   test_panel_strings.cpp
   test_theme_cache.cpp
+  test_scheme.cpp
   ${COMPONENT}/claim_seal.cpp
   ${COMPONENT}/discovery.cpp
   ${COMPONENT}/panel_strings.cpp

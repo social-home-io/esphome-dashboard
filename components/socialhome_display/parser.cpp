@@ -742,6 +742,28 @@ Theme::Theme() {
                         0x0F1A16, 0x2A2825, 0x3A1A16, 0xFFB4A9, 0x8AB4FF};
 }
 
+const Palette &Theme::palette(Scheme scheme) const {
+  switch (scheme) {
+    case Scheme::DARK:
+      return this->dark;
+    case Scheme::NIGHT:
+      return this->night;
+    case Scheme::LIGHT:
+    default:
+      return this->light;
+  }
+}
+
+Scheme scheme_for(const std::string &mode, bool night, bool night_screen) {
+  if (night_screen)
+    return Scheme::NIGHT;
+  if (mode == "light")
+    return Scheme::LIGHT;
+  if (mode == "dark")
+    return Scheme::DARK;
+  return night ? Scheme::DARK : Scheme::LIGHT;
+}
+
 const std::string &Theme::str(const char *key, const std::string &fallback) const {
   for (const auto &pair : this->strings)
     if (pair.key == key)

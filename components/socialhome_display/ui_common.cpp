@@ -45,13 +45,18 @@ const lv_font_t *SocialHomeDisplay::font_(FontRole role) const {
   return f->get_lv_font();
 }
 
-const Palette &SocialHomeDisplay::palette_() const {
-  if (this->mode_ == Mode::RUNNING && this->board_ != nullptr && this->board_->header.is_night)
-    return this->theme_.night;
-  if (this->theme_.mode == "dark")
-    return this->theme_.dark;
-  return this->theme_.light;
+Scheme SocialHomeDisplay::scheme_() const {
+  // The server's flag is the one source of "night": a new board that flips
+  // it re-renders the panel (render_ asks again), so the switch at the
+  // window's edges needs no clock of its own. While locked or offline the
+  // last board's flag holds until the next board; without a board (setup,
+  // first boot) it is day.
+  const bool night = this->board_ != nullptr && this->board_->header.is_night;
+  const bool night_screen = this->mode_ == Mode::RUNNING && night && !this->night_peek_;
+  return scheme_for(this->theme_.mode, night, night_screen);
 }
+
+const Palette &SocialHomeDisplay::palette_() const { return this->theme_.palette(this->scheme_()); }
 
 lv_obj_t *SocialHomeDisplay::box_(lv_obj_t *parent) {
   lv_obj_t *obj = lv_obj_create(parent);
