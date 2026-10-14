@@ -73,7 +73,7 @@ const std::map<std::string, std::string> &builtin() {
       {"close", "Close"},
       {"credits",
        "Emoji: Twemoji \xC2\xA9 Twitter, Inc and other contributors, \xC2\xA9 jdecked and other contributors, "
-       "CC-BY 4.0. Font: Roboto, Apache 2.0. Firmware: MPL-2.0, built on ESPHome (GPLv3) and LVGL (MIT)."},
+       "CC-BY 4.0. Font: Roboto, SIL OFL 1.1. Firmware: MPL-2.0, built on ESPHome (GPLv3) and LVGL (MIT)."},
       {"locked", "Screen locked"},
       {"enter_pin", "Enter PIN"},
       {"unlock", "Unlock"},

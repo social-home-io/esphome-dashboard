@@ -4,13 +4,15 @@ Firmware that turns an ESPHome touch panel into a [Social Home](https://github.c
 wall dashboard: the same household view as the browser dashboard, on a panel
 on the wall.
 
-> **Status: beta.** The panel finds Social Home on the home network, pairs
-> with the household and shows the household dashboard: Overview, Messages
-> (with a count of new ones on the tab), Notes, Map ("Who's where") with the
-> map picture, each person's page and the picture view for children, the
-> night screen and the privacy lock with its PIN pad, and "Got it" on
-> mentions. It joins Wi-Fi through Improv, works as a Home Assistant
-> Bluetooth proxy and updates itself over the air.
+> **Status: ready for the first release.** The panel finds Social Home on the
+> home network (or by typed address, or through Home Assistant's **Connect**),
+> pairs with the household and shows the household dashboard: Overview,
+> Messages (with a count of new ones on the tab), Notes, Map ("Who's where")
+> with the map picture, each person's page and the picture view for children,
+> the night screen and the privacy lock with its PIN pad, and "Got it" on
+> mentions, in the household's language. It joins Wi-Fi through Improv, works
+> as a Home Assistant Bluetooth proxy and updates itself over the air. It needs
+> Social Home with the wall panel API (display API v1).
 
 ![The panel's Overview](docs/screenshots/panel-overview.png)
 
@@ -20,12 +22,18 @@ on the wall.
 |---|---|---|---|
 | Guition JC8012P4A1 (10.1") | ESP32-P4 + ESP32-C6 | 1280×800 (landscape) | yes |
 
-The catalogue lives in [`devices/manifest.json`](devices/manifest.json).
+The firmware is built for the panel's engineering-sample ESP32-P4 silicon
+(pre-v3.0, `engineering_sample: "true"` in
+[`devices/guition-jc8012p4a1/packages.yaml`](devices/guition-jc8012p4a1/packages.yaml)).
+A board with v3.0 or later silicon needs that set to `"false"` and its own
+build. The catalogue lives in
+[`devices/manifest.json`](devices/manifest.json).
 
 ## Install
 
 1. Open the [web installer](https://social-home-io.github.io/esphome-dashboard/)
-   in Chrome or Edge on a desktop computer.
+   in Chrome or Edge on a desktop computer. It always installs the latest
+   release (the factory image; it offers to erase the panel first).
 2. Plug the panel in with USB-C, pick it, press **Install**.
 3. After flashing, the installer asks for your Wi-Fi (Improv over serial).
 
@@ -141,8 +149,8 @@ panel's — setup, pairing, errors, the PIN pad, settings, the Improv prompt.
 The panel keeps the last theme's language, colours and those strings in flash,
 so after a reboot or "Forget server" the setup screens still speak the
 household's language before any server answers. Its built-in English is only
-for a panel that never reached a server, and for the few strings the theme
-doesn't carry. Emoji are pictures (Twemoji, CC-BY 4.0) from the server, as the
+for a panel that never reached a server (and for a server older than the one
+pinned in `tests/fixtures/display-api/SOURCE`). Emoji are pictures (Twemoji, CC-BY 4.0) from the server, as the
 fonts carry none.
 
 ## Development
@@ -182,12 +190,18 @@ installer plus update manifests to GitHub Pages.
 - The sources in this repository (YAML, C++, Python, web installer) are
   licensed under the [Mozilla Public License 2.0](LICENSE).
 - The **compiled firmware** links ESPHome, whose C++ runtime is GPLv3, so the
-  binaries are distributed under the **GNU GPL v3**. The sources to rebuild
-  them are this repository plus the pinned ESPHome release
-  (`.github/esphome.env`).
+  binaries attached to releases and served by the web installer are
+  distributed under the **GNU GPL v3**. The sources to rebuild them are this
+  repository at the release tag plus the pinned ESPHome release
+  (`.github/esphome.env`). It also contains LVGL (MIT) and Mbed TLS
+  (Apache-2.0, part of ESP-IDF).
+- **Emoji** are [Twemoji](https://github.com/jdecked/twemoji) graphics
+  (© Twitter, Inc and other contributors, © jdecked and other contributors),
+  licensed [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/). Social
+  Home bundles and serves them; the panel only draws them. Attribution is on
+  the panel's settings screen and in [NOTICE](NOTICE).
+- **Roboto** is downloaded from Google Fonts at build time and embedded in the
+  firmware, licensed under the [SIL Open Font License 1.1](https://openfontlicense.org).
 - The touch controller firmware blob is downloaded at build time from
   [esphome-libs/gsl3670-firmware](https://github.com/esphome-libs/gsl3670-firmware)
-  (Apache-2.0); Roboto is downloaded from Google Fonts (Apache-2.0 / OFL).
-- Planned: emoji tiles will use [Twemoji](https://github.com/jdecked/twemoji)
-  graphics, licensed CC-BY 4.0. Attribution will ship in the firmware's about
-  screen and a NOTICE file when they are added.
+  (Apache-2.0).

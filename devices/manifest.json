@@ -11,7 +11,7 @@
       "ble": true,
       "models": ["JC8012P4A1", "JC8012P4A1-V2"],
       "revisions": ["engineering sample (pre-v3.0 silicon)"],
-      "status": "bootstrap"
+      "status": "supported"
     }
   ]
 }

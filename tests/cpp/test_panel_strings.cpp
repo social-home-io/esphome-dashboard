@@ -63,24 +63,21 @@ TEST(theme_string_or_builtin_english) {
 }
 
 TEST(theme_fixture_covers_the_panel_strings) {
-  // Every panel string the pinned theme carries replaces the English; the
-  // ones it doesn't carry yet are the known Social Home follow-ups.
+  // Every panel string comes from the pinned theme (the household's
+  // language); the built-in English is only for a panel that never reached
+  // a server.
   std::string json = check::fixture("theme.json");
   Theme t;
   CHECK(parse_theme(json.data(), json.size(), t) == ParseResult::OK);
-  static const char *const NOT_IN_THEME[] = {"improv_title",  "improv_allow",  "server_text_found",
-                                             "found_title",   "found_looking", "found_none",
-                                             "claim_sealed"};
   static const std::string MISSING = "\x01missing";
-  for (const char *key : NOT_IN_THEME)
-    CHECK_EQ(t.str(key, MISSING), MISSING);
   for (const char *key : {"pin_remaining", "pin_wait", "pin_offline", "wifi_title", "wifi_text", "wifi_waiting",
                           "server_title", "server_text", "server_placeholder", "server_invalid", "server_ha",
                           "connect", "pair_unreachable", "pair_busy", "claim_title", "claim_expired",
                           "claim_disabled", "claim_busy", "claim_unreachable", "ok", "change_server", "update_title",
                           "update_text", "map_placeholder", "map_none", "settings_title", "settings_server",
                           "settings_panel", "settings_firmware", "forget", "forget_confirm", "cancel", "close",
-                          "credits"}) {
+                          "credits", "improv_title", "improv_allow", "server_text_found", "found_title",
+                          "found_looking", "found_none", "claim_sealed"}) {
     CHECK(is_panel_string(key));
     CHECK(t.str(key, MISSING) != MISSING);
   }

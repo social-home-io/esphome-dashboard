@@ -1,6 +1,6 @@
 # Fonts for the Guition JC8012P4A1 (1280x800).
 #
-# Roboto (Apache 2.0) stands in for the browser dashboard's system-ui stack
+# Roboto (SIL OFL 1.1, from Google Fonts) stands in for the browser dashboard's system-ui stack
 # (system-ui, ..., Roboto). GF_Latin_Core covers the dashboard languages
 # (en, de, es, fr, nl) and its punctuation (› … – — · •). Sizes come from
 # packages.yaml substitutions, matching dashboard.css at 1280x800, so a larger
