@@ -195,6 +195,12 @@ that widens one says why in its description.
   straddles one; `offsets.md` lists both minutes. The browser's lock page is
   drawn by the last PIN answer and its clock ticks on its own schedule, so
   the lock steps wait for a quiet minute *before* the PIN is sent.
+- **NEW badges expire:** a message is NEW for 15 min. The seeded "@leo
+  Shoes on!" is 2 min old at the start, so about 13 min into a full run the
+  badge (and the Messages tab's unread count) goes on both screens; a shot
+  right then — the offline one above all, which shows each screen's last
+  fetch — can differ by it. Take that shot again; CI's runs (~6 min) never
+  reach it.
 - **Wait for pictures:** the script waits for fonts and every `<img>` in the
   browser and gives the panel 7 s on the map (it fetches and decodes a PNG).
   A blank avatar or map on one side is a timing problem first.

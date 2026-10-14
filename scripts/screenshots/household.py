@@ -128,8 +128,11 @@ MESSAGES = [
     ("pascal", ago(48), "", "image"),
     ("anna", ago(36), "@mia Don't forget your piano book, it's on the kitchen table 🎹", "text"),
     ("mia", ago(24), "Music is in room 12 today, they're painting room 3 🎨", "text"),
-    ("pascal", ago(11), "@leo Shoes on! 👟", "text"),
-    ("anna", ago(3), "@here Leaving work now, I'll pick up a cake for Gran 🍰", "text"),
+    # The last two are NEW (Social Home: 15 min, dashboard/messages.py
+    # NEW_FOR) for ~13 min of the run: a CI job (one locale × scheme, ~6 min)
+    # never sees a badge expire between the panel's shot and the browser's.
+    ("pascal", ago(2), "@leo Shoes on! 👟", "text"),
+    ("anna", ago(1), "@here Leaving work now, I'll pick up a cake for Gran 🍰", "text"),
 ]
 
 STICKIES = [
