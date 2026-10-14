@@ -568,6 +568,14 @@ bool rail_names_home(BoardKind kind, const std::string &person_kind) {
   return !(kind == BoardKind::PERSON && person_kind == "picture");
 }
 
+bool lock_screen_changed(const LockScreen &old, const LockScreen &now) {
+  return old.household != now.household || old.locale != now.locale || old.clock.date != now.clock.date ||
+         old.clock.day != now.clock.day || old.clock.tz != now.clock.tz || old.is_night != now.is_night ||
+         old.locked != now.locked || old.pin_button != now.pin_button || old.enter_pin != now.enter_pin ||
+         old.unlock != now.unlock || old.del != now.del || old.wrong_pin != now.wrong_pin ||
+         old.tries_left != now.tries_left || old.last_try != now.last_try || old.forgot_pin != now.forgot_pin;
+}
+
 int top_side_width(int main_width, const Metrics &m) {
   return std::max(m.px(320), std::min(m.px(640), main_width - m.px(32) - m.px(320)));
 }

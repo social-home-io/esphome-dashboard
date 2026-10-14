@@ -512,6 +512,38 @@ TEST(rail_names_home_except_in_the_picture_view) {
   CHECK(rail_names_home(BoardKind::OVERVIEW, "picture"));
 }
 
+TEST(lock_screen_rebuilds_only_for_what_it_shows) {
+  LockScreen a;
+  a.household = "The Vizeli Household";
+  a.clock.time = "16:14";
+  a.clock.date = "Wednesday, October 14";
+  a.clock.epoch = 1791994440;
+  a.pin_button = "PIN";
+  LockScreen b = a;
+  // The next poll a minute later: only the time moved — no rebuild (the
+  // clock label ticks by itself), so a tap on the PIN button isn't lost.
+  b.clock.time = "16:15";
+  b.clock.iso = "2026-10-14T16:15:00+00:00";
+  b.clock.epoch += 60;
+  CHECK(!lock_screen_changed(a, b));
+  // Anything drawn does rebuild.
+  b.clock.date = "Thursday, October 15";
+  CHECK(lock_screen_changed(a, b));
+  b = a;
+  b.is_night = true;
+  CHECK(lock_screen_changed(a, b));
+  b = a;
+  b.locale = "de";
+  b.pin_button = "PIN";
+  CHECK(lock_screen_changed(a, b));
+  b = a;
+  b.household = "Familie Vizeli";
+  CHECK(lock_screen_changed(a, b));
+  b = a;
+  b.forgot_pin = "Forgot the PIN?";
+  CHECK(lock_screen_changed(a, b));
+}
+
 TEST(top_side_matches_the_tablet) {
   // .dash-top-side: 40rem at the end of the row on the 1280 x 800 panel,
   // with and without the rail.

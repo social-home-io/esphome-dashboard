@@ -474,12 +474,15 @@ class Run:
                 raise RunError("the panel did not lock")
             pin_button = clock.parent.kids[-1]
             summary = "document.querySelector('.dash-lock-summary').click();" + blur
+            # Open the panel's pad first and make sure it opened: a tap that
+            # meets a screen rebuild can be lost, and a missing pad would
+            # only fail later (or compare the pad against a closed lock).
+            self.open_pin_pad(pin_button)
             if "pinpad" in screens:
-                self.pair_shot(name("pinpad"), url=None, panel_steps=[self.panel.tap(pin_button), "wait 4"],
+                self.pair_shot(name("pinpad"), url=None, panel_steps=["wait 1"],
                                browser_js=summary, browser_wait=1, retry=False)
             else:
                 self.browser.js(summary, wait=1)
-                self.panel.run(self.panel.tap(pin_button), "wait 4")
             if not any(s in screens for s in ("wrong-pin", "last-try")):
                 return
             keys = "".join(f"document.querySelector('[data-key=\"{d}\"]').click();" for d in WRONG_PIN)
@@ -502,6 +505,17 @@ class Run:
             self.ctl("POST", "/unlock")
             self.browser.cookie(self.dbase, "sh_dash", self.cookie)
             self.wait_board(60)
+
+    def open_pin_pad(self, pin_button: boxes.Node, tries: int = 3) -> None:
+        """Tap the panel's 🔒 PIN button until its keypad shows."""
+        assert self.panel
+        for attempt in range(1, tries + 1):
+            self.panel.run(self.panel.tap(pin_button), "wait 4")
+            if boxes.keypad(self.panel.dump()) is not None:
+                if attempt > 1:
+                    self.notes.append(f"the panel's PIN pad opened on tap {attempt}")
+                return
+        raise RunError(f"no PIN pad on the panel after {tries} taps on the PIN button")
 
     def panel_wrong_pin(self, expect: int) -> int | None:
         """A wrong PIN on the panel; again if the panel didn't send it (it

@@ -284,6 +284,12 @@ int inline_top(float css_line, int font_line, int font_base, float inner_css, in
 /// only the house — 88 px, not 120.
 bool rail_names_home(BoardKind kind, const std::string &person_kind);
 
+/// Whether a new lock-screen answer changes anything the lock screen draws.
+/// The clock's time ticks by itself (tick_clock_), so a poll that only moves
+/// the time must not rebuild the screen: a rebuild replaces the PIN button
+/// under a finger that is pressing it, and that tap is lost.
+bool lock_screen_changed(const LockScreen &old, const LockScreen &now);
+
 /// `.dash-top-side` (NEXT and the messages): flex 1 1 20rem, at most
 /// 40rem, at the end of the Overview's top row, 32 px past the clock
 /// column, which keeps at least 20rem (the date). Screen px, for a
