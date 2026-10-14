@@ -1,0 +1,70 @@
+{
+	"name": "Social Home wall panel firmware",
+	// Python 3.13 matches CI (.github/workflows/pr.yml); ESPHome itself is
+	// pinned in .github/esphome.env and installed by post-create.sh.
+	"image": "mcr.microsoft.com/devcontainers/python:3.13",
+
+	"features": {
+		"ghcr.io/devcontainers/features/common-utils:2": {
+			"upgradePackages": true
+		},
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		"ghcr.io/jsburckhardt/devcontainer-features/uv:1": {},
+		"ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
+		// cmake + build-essential: host C++ tests (tests/cpp).
+		// libsdl2-dev + libssl-dev + libmbedtls-dev: the host SDL panel
+		// (builds/host-sdl.yaml), same packages as the CI host-sdl job.
+		// xvfb: a display for the SDL window and for headless screenshots.
+		// chromium-driver: Debian's chromium, for browser-vs-panel shots.
+		"ghcr.io/devcontainers-extra/features/apt-packages:1": {
+			"packages": "cmake build-essential libsdl2-dev libssl-dev libmbedtls-dev xvfb chromium-driver"
+		}
+	},
+
+	// venv + pinned ESPHome + yamllint, host test configure.
+	"postCreateCommand": ".devcontainer/post-create.sh",
+	// Xvfb on :99 on every container start.
+	"postStartCommand": ".devcontainer/post-start.sh",
+
+	"containerEnv": {
+		"UV_VENV_CLEAR": "1",
+		// Keep uv's cache on the workspace filesystem so hardlinks work.
+		"UV_LINK_MODE": "hardlink",
+		"UV_CACHE_DIR": "${containerWorkspaceFolder}/.uv-cache",
+		// SDL host panel and headless browser draw on Xvfb :99.
+		"DISPLAY": ":99",
+		"PUPPETEER_EXECUTABLE_PATH": "/usr/bin/chromium",
+		"CHROME_PATH": "/usr/bin/chromium"
+	},
+
+	// 6052 = `esphome dashboard .` (optional, for browsing configs/logs).
+	"forwardPorts": [6052],
+	"portsAttributes": {
+		"6052": {
+			"label": "ESPHome dashboard",
+			"onAutoForward": "silent"
+		}
+	},
+
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ESPHome.esphome-vscode",
+				"redhat.vscode-yaml",
+				"ms-vscode.cmake-tools",
+				"ms-vscode.cpptools",
+				"ms-python.python"
+			],
+			"settings": {
+				"python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+				"yaml.customTags": [
+					"!include scalar",
+					"!secret scalar",
+					"!lambda scalar",
+					"!extend scalar",
+					"!remove scalar"
+				]
+			}
+		}
+	}
+}
