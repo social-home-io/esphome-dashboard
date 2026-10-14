@@ -2,7 +2,8 @@
 #  - improv_serial on the USB-C UART (ESP Web Tools asks for Wi-Fi right after
 #    flashing),
 #  - esp32_improv over BLE (Home Assistant's Improv discovery or
-#    improv-wifi.com), confirmed by tapping a button on the panel.
+#    improv-wifi.com), confirmed by tapping a button on the panel. Its words
+#    follow the household's language (socialhome_display's cached theme).
 
 improv_serial:
 
@@ -20,6 +21,14 @@ esp32_improv:
           condition:
             lambda: return state == improv::STATE_AWAITING_AUTHORIZATION;
           then:
+            # In the household's language when the panel knows it (the
+            # cached theme), else the English below.
+            - lvgl.label.update:
+                id: improv_authorize_title
+                text: !lambda return id(socialhome).get_string("improv_title");
+            - lvgl.label.update:
+                id: improv_authorize_allow
+                text: !lambda return id(socialhome).get_string("improv_allow");
             - lvgl.widget.show: improv_authorize_panel
           else:
             - lvgl.widget.hide: improv_authorize_panel
@@ -46,6 +55,7 @@ lvgl:
             flex_align_cross: CENTER
           widgets:
             - label:
+                id: improv_authorize_title
                 text: "A phone wants to set up Wi-Fi"
                 text_font: font_title
                 text_color: 0x1F2937
@@ -68,6 +78,7 @@ lvgl:
                       state: false
                 widgets:
                   - label:
+                      id: improv_authorize_allow
                       text: "Allow"
                       text_font: font_body
                       text_color: 0xFFFFFF

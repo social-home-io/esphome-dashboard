@@ -25,7 +25,9 @@
 #endif
 #endif
 
+#include "panel_strings.h"
 #include "parser.h"
+#include "theme_cache.h"
 
 namespace esphome::socialhome_display {
 
@@ -54,80 +56,12 @@ static constexpr uint32_t CLAIM_ERROR_MS = 30000;
 // ---- strings -------------------------------------------------------------
 
 const std::string &SocialHomeDisplay::str_(const char *key) const {
-  // The panel's own English, for the setup screens (before the server's
-  // strings exist) and for strings the v1 theme doesn't carry.
-  static const std::map<std::string, std::string> BUILTIN = {
-      {"wifi_title", "Connect the panel to Wi-Fi"},
-      {"wifi_text",
-       "Use Improv to give the panel your Wi-Fi: the web installer asks right after flashing, or a phone sends it "
-       "over Bluetooth (Home Assistant finds the panel, or open improv-wifi.com). Tap Allow when the panel asks."},
-      {"wifi_waiting", "Waiting for Wi-Fi\xE2\x80\xA6"},
-      {"server_title", "Find Social Home"},
-      {"server_text", "Type the address of your Social Home. The dashboard port 8100 is added for you."},
-      {"server_text_found", "Tap your Social Home, or type its address. The dashboard port 8100 is added for you."},
-      {"found_title", "Found on this network"},
-      {"found_looking", "Looking for Social Home on this network\xE2\x80\xA6"},
-      {"found_none", "None found yet. Using the Home Assistant App? Type its address below."},
-      {"server_placeholder", "192.168.1.20 or socialhome.local"},
-      {"server_invalid", "That doesn't look like an address. Try 192.168.1.20 or socialhome.local."},
-      {"server_ha", "Or adopt this panel in Home Assistant and press Connect in Social Home."},
-      {"connect", "Connect"},
-      {"connecting", "Connecting to Social Home\xE2\x80\xA6"},
-      {"pair_title", "Pair this panel"},
-      {"pair_hint", "In Social Home, open Admin \xE2\x80\xBA Dashboard \xE2\x80\xBA Wall panels \xE2\x80\xBA Add "
-                    "and enter this code:"},
-      {"pair_expired", "The code expired \xE2\x80\x94 getting a new one\xE2\x80\xA6"},
-      {"pair_unreachable", "Can't reach Social Home at this address."},
-      {"pair_busy", "Too many pairing attempts. Trying again shortly\xE2\x80\xA6"},
-      {"claim_title", "Connect to Social Home"},
-      {"claim_expired", "This connect request expired. Press Connect in Social Home again."},
-      {"claim_disabled", "The household dashboard is turned off in Social Home."},
-      {"claim_busy", "Too many tries, wait a moment and press Connect again."},
-      {"claim_unreachable", "Can't reach Social Home at {host}."},
-      {"claim_sealed", "This connect request can't be opened on this panel. Press Connect in Social Home again."},
-      {"ok", "OK"},
-      {"unpaired", "This panel isn't paired any more. Pair it again in Admin \xE2\x80\xBA Dashboard."},
-      {"change_server", "Change address"},
-      {"retry", "Try again"},
-      {"update_title", "This panel needs an update"},
-      {"update_text",
-       "Your Social Home speaks a newer panel API. Update the panel's firmware from Home Assistant or the web "
-       "installer."},
-      {"offline", "Can't reach Social Home \xE2\x80\x94 showing info from {time}"},
-      {"got_it", "Got it"},
-      {"see_all", "See all"},
-      {"new", "new"},
-      {"nav_home", "Home"},
-      {"map_title", "Who's where"},
-      {"map_placeholder", "The map comes with a Social Home update."},
-      {"map_none", "No map picture on this Social Home \xE2\x80\x94 the list shows who's where."},
-      {"settings_title", "Panel settings"},
-      {"settings_server", "Social Home"},
-      {"settings_panel", "Panel"},
-      {"settings_firmware", "Firmware"},
-      {"forget", "Forget server"},
-      {"forget_confirm", "Forget this Social Home? The panel shows the setup again and needs a new pairing code."},
-      {"cancel", "Cancel"},
-      {"close", "Close"},
-      {"credits",
-       "Emoji: Twemoji \xC2\xA9 Twitter, Inc and other contributors, \xC2\xA9 jdecked and other contributors, "
-       "CC-BY 4.0. Font: Roboto, Apache 2.0. Firmware: MPL-2.0, built on ESPHome (GPLv3) and LVGL (MIT)."},
-      {"locked", "Screen locked"},
-      {"enter_pin", "Enter PIN"},
-      {"unlock", "Unlock"},
-      {"pin_button", "PIN"},
-      {"wrong_pin", "Wrong PIN"},
-      // Not in the v1 theme strings yet: the panel's English.
-      {"pin_remaining", "{n} tries left"},
-      {"pin_wait", "Too many tries. Try again in {n} s."},
-      {"pin_offline", "Can't reach Social Home. Try again."},
-      {"lock", "Lock screen"},
-      {"night_wake", "Tap to show the dashboard"},
-  };
-  static const std::string EMPTY;
-  auto it = BUILTIN.find(key);
-  return this->theme_.str(key, it == BUILTIN.end() ? EMPTY : it->second);
+  // The household's words (the theme, or the one cached from before a
+  // reboot), else the panel's own English (panel_strings.cpp).
+  return panel_string(this->theme_, key);
 }
+
+std::string SocialHomeDisplay::get_string(const std::string &key) const { return this->str_(key.c_str()); }
 
 std::string *SocialHomeDisplay::payload_(const std::string &value) {
   this->payloads_.push_back(std::make_unique<std::string>(value));
@@ -148,7 +82,13 @@ void SocialHomeDisplay::setup() {
   this->pref_display_ =
       global_preferences->make_preference<StoredText>(fnv1_hash("socialhome_display.display_id"), true);
   this->pref_key_ = global_preferences->make_preference<StoredKey>(fnv1_hash("socialhome_display.panel_key"), true);
+  this->pref_theme_head_ =
+      global_preferences->make_preference<ThemeCacheHead>(fnv1_hash("socialhome_display.theme"), true);
+  for (size_t i = 0; i < THEME_CACHE_CHUNKS; i++)
+    this->pref_theme_[i] = global_preferences->make_preference<ThemeCacheChunk>(
+        fnv1_hash("socialhome_display.theme." + std::to_string(i)), true);
   this->load_state_();
+  this->load_theme_cache_();
   this->load_panel_key_();
   char mac[MAC_ADDRESS_PRETTY_BUFFER_SIZE];
   this->mac_ = get_mac_address_pretty_into_buffer(mac);
@@ -202,6 +142,55 @@ void SocialHomeDisplay::load_state_() {
   this->display_id_ = load_text(this->pref_display_);
   if (this->server_.empty() && !this->default_server_.empty())
     this->server_ = normalize_server_url(this->default_server_);
+}
+
+// ---- cached theme ----------------------------------------------------------------
+//
+// The last theme's language, colours and the panel's own strings
+// (theme_cache.h), so the setup and error screens after a reboot or Forget
+// server speak the household's language before any server answers.
+
+void SocialHomeDisplay::load_theme_cache_() {
+  ThemeCacheHead head{};
+  if (!this->pref_theme_head_.load(&head))
+    return;
+  if (!theme_cache_head_ok(head)) {
+    ESP_LOGW(TAG, "Ignoring the cached theme (format %u)", head.version);
+    return;
+  }
+  std::vector<ThemeCacheChunk> chunks(head.chunks);
+  for (size_t i = 0; i < head.chunks; i++)
+    if (!this->pref_theme_[i].load(&chunks[i]))
+      return;
+  std::string blob = theme_cache_join(head, chunks);
+  Theme theme;
+  if (blob.empty() || !decode_theme_cache(blob, theme)) {
+    ESP_LOGW(TAG, "Ignoring the cached theme (damaged)");
+    return;
+  }
+  ESP_LOGD(TAG, "Cached theme: %s, %u strings", theme.locale.c_str(), static_cast<unsigned>(theme.strings.size()));
+  this->theme_ = std::move(theme);
+  this->theme_cached_ = head.checksum;
+}
+
+void SocialHomeDisplay::save_theme_cache_() {
+  const std::string blob = encode_theme_cache(this->theme_);
+  const ThemeCacheHead head = theme_cache_head(blob);
+  if (head.checksum == this->theme_cached_)
+    return;  // unchanged: no flash write
+  // Chunks first, the head last: a cut in between leaves a head whose
+  // checksum doesn't match, which is ignored at the next boot.
+  const std::vector<ThemeCacheChunk> chunks = theme_cache_chunks(blob);
+  bool saved = true;
+  for (size_t i = 0; i < chunks.size(); i++)
+    saved = this->pref_theme_[i].save(&chunks[i]) && saved;
+  saved = saved && this->pref_theme_head_.save(&head) && global_preferences->sync();
+  if (!saved) {
+    ESP_LOGW(TAG, "Couldn't cache the theme");
+    return;
+  }
+  ESP_LOGD(TAG, "Cached the theme (%s, %u bytes)", this->theme_.locale.c_str(), static_cast<unsigned>(blob.size()));
+  this->theme_cached_ = head.checksum;
 }
 
 void SocialHomeDisplay::save_state_() {
@@ -290,7 +279,8 @@ void SocialHomeDisplay::forget_server() {
   this->save_state_();
   this->board_.reset();
   this->etags_.clear();
-  this->theme_ = Theme{};
+  // The theme stays (and stays cached): the setup screens keep the
+  // household's language. The next server's theme replaces it.
   this->theme_etag_.clear();
   this->pairing_ = PairStart{};
   this->clear_images_ = true;
@@ -609,7 +599,7 @@ void SocialHomeDisplay::handle_claim_(HttpResponse &response) {
     this->pairing_ = PairStart{};
     this->board_.reset();
     this->etags_.clear();
-    this->theme_ = Theme{};
+    // The new household's theme replaces the old one at the first poll.
     this->theme_etag_.clear();
     this->clear_images_ = true;
     this->current_path_ = HOME_PATH;
@@ -626,13 +616,9 @@ void SocialHomeDisplay::handle_claim_(HttpResponse &response) {
     case ClaimResult::BUSY:
       this->claim_error_ = this->str_("claim_busy");
       break;
-    default: {
-      this->claim_error_ = this->str_("claim_unreachable");
-      size_t at = this->claim_error_.find("{host}");
-      if (at != std::string::npos)
-        this->claim_error_.replace(at, 6, url_host(this->server_));
+    default:
+      this->claim_error_ = fill_placeholder(this->str_("claim_unreachable"), "host", url_host(this->server_));
       break;
-    }
   }
   ESP_LOGW(TAG, "connect: failed (status %d%s%s)", response.status, response.error.empty() ? "" : ", ",
            response.error.c_str());
@@ -741,15 +727,6 @@ void SocialHomeDisplay::unpair_() {
 
 // ---- lock, unlock, "Got it" ------------------------------------------------
 
-namespace {
-std::string with_n(std::string text, uint32_t n) {
-  size_t at = text.find("{n}");
-  if (at != std::string::npos)
-    text.replace(at, 3, std::to_string(n));
-  return text;
-}
-}  // namespace
-
 void SocialHomeDisplay::request_lock_() {
   if (this->lock_request_ != 0)
     return;
@@ -831,7 +808,7 @@ void SocialHomeDisplay::handle_unlock_(HttpResponse &response) {
       // wrong PIN unpairs the panel.
       std::string text = this->lock_.wrong_pin.empty() ? this->str_("wrong_pin") : this->lock_.wrong_pin;
       if (error.remaining >= 0)
-        text += " \xC2\xB7 " + with_n(this->str_("pin_remaining"), static_cast<uint32_t>(error.remaining));
+        text += " \xC2\xB7 " + fill_placeholder(this->str_("pin_remaining"), "n", std::to_string(error.remaining));
       this->pin_message_ = text;
       break;
     }
@@ -842,7 +819,7 @@ void SocialHomeDisplay::handle_unlock_(HttpResponse &response) {
     case 429: {
       uint32_t wait = parse_retry_after(response.retry_after, error.retry_after > 0 ? error.retry_after : 30);
       this->pin_wait_until_ = now + wait * 1000;
-      this->pin_message_ = with_n(this->str_("pin_wait"), wait);
+      this->pin_message_ = fill_placeholder(this->str_("pin_wait"), "n", std::to_string(wait));
       break;
     }
     default:
@@ -940,6 +917,7 @@ void SocialHomeDisplay::handle_theme_(HttpResponse &response) {
     if (r == ParseResult::OK) {
       this->theme_ = std::move(theme);
       this->theme_etag_ = response.etag;
+      this->save_theme_cache_();
       this->dirty_ = true;
     } else if (r == ParseResult::WRONG_VERSION) {
       this->set_mode_(Mode::UPDATE_NEEDED);

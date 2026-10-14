@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: MPL-2.0
 # Host tests for the socialhome_display component's platform-free code:
 # the JSON parser (against the pinned Social Home fixtures), the layout /
-# URL helpers, the mDNS answer filtering and the sealed connect claim
-# (against Social Home's shared vectors).
+# URL helpers, the mDNS answer filtering, the sealed connect claim
+# (against Social Home's shared vectors), the panel's strings and the cached
+# theme.
 #
 #   cmake -S tests/cpp -B build/tests && cmake --build build/tests && ctest --test-dir build/tests -V
 
@@ -59,10 +60,14 @@ add_executable(socialhome_display_tests
   test_png.cpp
   test_discovery.cpp
   test_claim_seal.cpp
+  test_panel_strings.cpp
+  test_theme_cache.cpp
   ${COMPONENT}/claim_seal.cpp
   ${COMPONENT}/discovery.cpp
+  ${COMPONENT}/panel_strings.cpp
   ${COMPONENT}/parser.cpp
   ${COMPONENT}/png.cpp
+  ${COMPONENT}/theme_cache.cpp
   ${COMPONENT}/util.cpp
 )
 target_include_directories(socialhome_display_tests PRIVATE ${COMPONENT})

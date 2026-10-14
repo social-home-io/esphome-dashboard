@@ -29,6 +29,8 @@
 #include "map_picture.h"
 #include "model.h"
 #include "net.h"
+#include "panel_strings.h"
+#include "theme_cache.h"
 #include "util.h"
 
 namespace esphome::socialhome_display {
@@ -110,12 +112,18 @@ class SocialHomeDisplay : public Component {
   Mode get_mode() const { return this->mode_; }
   /// The board path shown now ("/api/display/v1/home", …).
   const std::string &get_path() const { return this->current_path_; }
+  /// The household's string for `key` (panel_strings.h), else the panel's
+  /// English: for LVGL widgets declared in YAML (common/improv.yaml).
+  std::string get_string(const std::string &key) const;
 
  protected:
   // ---- state machine (socialhome_display.cpp)
   void set_mode_(Mode mode);
   void load_state_();
   void save_state_();
+  void load_theme_cache_();
+  /// Store the current theme when it differs from the cached one.
+  void save_theme_cache_();
   bool network_up_() const;
   HttpRequest request_(const std::string &path, bool auth = true) const;
   void start_pairing_();
@@ -279,6 +287,9 @@ class SocialHomeDisplay : public Component {
   ESPPreferenceObject pref_token_;
   ESPPreferenceObject pref_display_;
   ESPPreferenceObject pref_key_;
+  ESPPreferenceObject pref_theme_head_;
+  ESPPreferenceObject pref_theme_[THEME_CACHE_CHUNKS];
+  uint32_t theme_cached_{0};  ///< checksum of the cached theme (0: none)
   PanelKeyPair panel_key_;
   std::string panel_key_text_;  ///< empty when no key could be made
   std::string server_;
