@@ -5,7 +5,10 @@
 Pages hosts one site per repository and every deploy replaces all of it, so
 each deploy must carry the firmware panels poll for updates. The site is:
 
-* ``docs/`` at the checked-out commit (the installer page),
+* ``docs/`` at the checked-out commit (the installer page), with the ESP Web
+  Tools version ``docs/package.json`` pins (Dependabot bumps it there) written
+  over ``{{ESP_WEB_TOOLS_VERSION}}`` in every page; the package.json itself is
+  not published,
 * ``devices.json`` (a copy of ``devices/manifest.json``),
 * ``release.json`` (which release the firmware comes from, for the page),
 * ``firmware/<slug>/{<slug>.factory.bin, <slug>.ota.bin, manifest.json}``
@@ -44,6 +47,16 @@ ROOT = Path(__file__).resolve().parents[1]
 CALVER = re.compile(r"^[0-9]{4}\.[1-9][0-9]?\.[1-9][0-9]?(\.[0-9]+)?$")
 
 
+# The installer pages name ESP Web Tools by this placeholder; docs/package.json
+# holds the exact version (an npm dependency Dependabot can bump).
+ESP_WEB_TOOLS_PLACEHOLDER = "{{ESP_WEB_TOOLS_VERSION}}"
+EXACT_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+
+
+class SiteError(ValueError):
+    """``docs/`` can't be rendered into the installer site."""
+
+
 class ReleaseError(ValueError):
     """The release listing can't be deployed as the update source."""
 
@@ -63,6 +76,29 @@ def validate_release(release: dict) -> dict:
     if not isinstance(url, str) or not url.startswith("https://"):
         raise ReleaseError(f"release {tag} has no https html_url")
     return release
+
+
+def esp_web_tools_version(docs: Path) -> str:
+    """The exact ESP Web Tools version ``docs/package.json`` pins."""
+    package = docs / "package.json"
+    if not package.is_file():
+        raise SiteError(f"{package} is missing: it pins ESP Web Tools for the installer")
+    version = json.loads(package.read_text()).get("dependencies", {}).get("esp-web-tools")
+    if not isinstance(version, str) or not EXACT_VERSION.match(version):
+        raise SiteError(f"{package}: esp-web-tools must be an exact x.y.z version, not {version!r}")
+    return version
+
+
+def render_docs(docs: Path, out: Path) -> None:
+    """Copy ``docs`` to ``out`` with the ESP Web Tools version filled in."""
+    version = esp_web_tools_version(docs)
+    if not any(ESP_WEB_TOOLS_PLACEHOLDER in page.read_text() for page in docs.rglob("*.html")):
+        raise SiteError(f"no page in {docs} loads ESP Web Tools via {ESP_WEB_TOOLS_PLACEHOLDER}")
+    shutil.copytree(docs, out, ignore=shutil.ignore_patterns("package.json"))
+    for page in sorted(out.rglob("*.html")):
+        text = page.read_text()
+        if ESP_WEB_TOOLS_PLACEHOLDER in text:
+            page.write_text(text.replace(ESP_WEB_TOOLS_PLACEHOLDER, version))
 
 
 def pick_firmware(devices: list[dict], asset_names: set[str]) -> tuple[list[str], list[str]]:
@@ -108,7 +144,7 @@ def assemble(
 
     if out.exists():
         raise FileExistsError(f"{out} already exists; refusing to mix in stale files")
-    shutil.copytree(docs, out)
+    render_docs(docs, out)
     shutil.copyfile(devices_manifest, out / "devices.json")
 
     by_slug = {device["slug"]: device for device in devices}
@@ -207,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
             assets=args.release_dir,
             out=args.out,
         )
-    except (ReleaseError, FileNotFoundError, FileExistsError, RuntimeError) as err:
+    except (ReleaseError, SiteError, FileNotFoundError, FileExistsError, RuntimeError) as err:
         print(f"error: {err}", file=sys.stderr)
         return 1
     for warning in summary["warnings"]:

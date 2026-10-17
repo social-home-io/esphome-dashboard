@@ -1,0 +1,4 @@
+# The ESPHome release CI, release builds and the devcontainer use: the one
+# place it is pinned. Dependabot bumps it (pip ecosystem); an ESPHome bump is
+# never automerged, the panel needs a hardware check first.
+esphome==2026.9.1

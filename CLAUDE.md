@@ -46,7 +46,11 @@ behave the same. Its own `CLAUDE.md` carries the mirror of this rule.
   whose licence isn't MPL-2.0-compatible (e.g. jtenniswood/espcontrol,
   PolyForm Noncommercial). Sources are MPL-2.0; the compiled firmware is
   GPLv3 because it links ESPHome.
-- ESPHome is pinned in `.github/esphome.env`; Renovate bumps it.
+- ESPHome is pinned in `.github/esphome-requirements.txt`, the one source CI,
+  releases and the devcontainer read; Dependabot bumps it (and the GitHub
+  Actions, devcontainer features and ESP Web Tools in `docs/package.json`).
+  Patch / minor bumps automerge on green, except ESPHome: its monthly releases
+  change LVGL and drivers, so a human merges it after a check on hardware.
 - Crypto wire shapes carry a suite tag and unknown suites are rejected (the
   sealed Connect-from-Home-Assistant claim, `x25519-hkdf-sha256-aes256gcm`).
   Never log the token, the claim or keys.

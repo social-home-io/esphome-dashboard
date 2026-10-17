@@ -1,0 +1,9 @@
+{
+  "name": "esphome-dashboard-installer",
+  "private": true,
+  "description": "Pins the ESP Web Tools release the installer page loads; scripts/build_site.py writes it into the page. Dependabot bumps it.",
+  "license": "MPL-2.0",
+  "dependencies": {
+    "esp-web-tools": "10.4.0"
+  }
+}

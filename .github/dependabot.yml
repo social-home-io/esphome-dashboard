@@ -1,0 +1,55 @@
+# Dependency updates. Patch and minor bumps are grouped per ecosystem and
+# automerge on green (.github/workflows/dependabot-automerge.yml); majors come
+# as one PR each for a human. ESPHome never automerges, whatever the bump: its
+# monthly releases change LVGL and drivers, so the panel needs a check on
+# hardware first. Every ecosystem waits 3 days after a release (cooldown).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    labels: [chore, dependencies]
+    groups:
+      github-actions:
+        update-types: [patch, minor]
+
+  # The pinned ESPHome release (.github/esphome-requirements.txt): CI,
+  # release builds and the devcontainer all read it.
+  - package-ecosystem: pip
+    directory: /.github
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    labels: [chore, dependencies]
+    groups:
+      esphome:
+        update-types: [patch, minor]
+
+  # ESP Web Tools on the installer page (docs/package.json; build_site.py
+  # writes the version into the page's CDN URL).
+  - package-ecosystem: npm
+    directory: /docs
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    labels: [chore, dependencies]
+    groups:
+      installer:
+        update-types: [patch, minor]
+
+  # Dev container features (.devcontainer/devcontainer.json + its lock file).
+  - package-ecosystem: devcontainers
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    labels: [chore, dependencies]
+    groups:
+      devcontainers:
+        update-types: [patch, minor]

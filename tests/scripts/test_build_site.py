@@ -23,6 +23,10 @@ DEVICES = {
 }
 
 
+PAGE = '<script src="https://unpkg.com/esp-web-tools@{{ESP_WEB_TOOLS_VERSION}}/dist/x.js"></script>'
+PACKAGE = {"private": True, "dependencies": {"esp-web-tools": "10.4.0"}}
+
+
 def release(tag: str = "2026.10.14", assets: list[str] | None = None, **extra) -> dict:
     return {
         "tag_name": tag,
@@ -42,7 +46,8 @@ class Workspace:
         root = Path(self._tmp.name)
         self.docs = root / "docs"
         self.docs.mkdir()
-        (self.docs / "index.html").write_text("<!doctype html>")
+        (self.docs / "index.html").write_text(PAGE)
+        (self.docs / "package.json").write_text(json.dumps(PACKAGE))
         self.devices = root / "manifest.json"
         self.devices.write_text(json.dumps(DEVICES))
         self.assets = root / "release"
@@ -117,6 +122,47 @@ class ParseLatestTest(unittest.TestCase):
 
 
 class AssembleTest(unittest.TestCase):
+    def test_esp_web_tools_version_rendered_from_package_json(self) -> None:
+        with Workspace() as ws:
+            (ws.docs / "help").mkdir()
+            (ws.docs / "help" / "flash.html").write_text(PAGE)
+            ws.assemble(None)
+            url = '<script src="https://unpkg.com/esp-web-tools@10.4.0/dist/x.js"></script>'
+            self.assertEqual((ws.out / "index.html").read_text(), url)
+            self.assertEqual((ws.out / "help" / "flash.html").read_text(), url)
+            self.assertFalse((ws.out / "package.json").exists())
+
+    def test_esp_web_tools_needs_exact_version(self) -> None:
+        for version in ("^10.4.0", "~10.4", "latest", "10.4", None):
+            with self.subTest(version=version), Workspace() as ws:
+                (ws.docs / "package.json").write_text(
+                    json.dumps({"dependencies": {"esp-web-tools": version}})
+                )
+                with self.assertRaisesRegex(build_site.SiteError, "exact"):
+                    ws.assemble(None)
+
+    def test_missing_package_json_fails(self) -> None:
+        with Workspace() as ws:
+            (ws.docs / "package.json").unlink()
+            with self.assertRaisesRegex(build_site.SiteError, "missing"):
+                ws.assemble(None)
+
+    def test_page_without_placeholder_fails(self) -> None:
+        with Workspace() as ws:
+            (ws.docs / "index.html").write_text(
+                '<script src="https://unpkg.com/esp-web-tools@10.4.0/dist/x.js"></script>'
+            )
+            with self.assertRaisesRegex(build_site.SiteError, "ESP_WEB_TOOLS_VERSION"):
+                ws.assemble(None)
+            self.assertFalse(ws.out.exists())
+
+    def test_repo_docs_render(self) -> None:
+        """The real installer page carries the placeholder and package.json pins a version."""
+        version = build_site.esp_web_tools_version(ROOT / "docs")
+        page = (ROOT / "docs" / "index.html").read_text()
+        self.assertIn(f"esp-web-tools@{build_site.ESP_WEB_TOOLS_PLACEHOLDER}/", page)
+        self.assertRegex(version, r"^[0-9]+\.[0-9]+\.[0-9]+$")
+
     def test_no_release_deploys_without_firmware(self) -> None:
         with Workspace() as ws:
             summary = ws.assemble(None)

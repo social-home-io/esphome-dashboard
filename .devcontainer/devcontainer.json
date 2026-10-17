@@ -1,7 +1,7 @@
 {
 	"name": "Social Home wall panel firmware",
 	// Python 3.13 matches CI (.github/workflows/pr.yml); ESPHome itself is
-	// pinned in .github/esphome.env and installed by post-create.sh.
+	// pinned in .github/esphome-requirements.txt and installed by post-create.sh.
 	"image": "mcr.microsoft.com/devcontainers/python:3.13",
 
 	"features": {

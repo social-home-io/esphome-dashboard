@@ -1,0 +1,47 @@
+# Turns on auto-merge (squash) for Dependabot's patch and minor updates, so
+# they land once the required checks pass. Majors and every ESPHome bump stay
+# for a human: an ESPHome release changes LVGL and the drivers, and the panel
+# needs a check on hardware before it ships (see .github/dependabot.yml).
+#
+# Auto-merge only waits for the checks branch protection requires. While the
+# repository's "Allow auto-merge" setting is off this job only says so and
+# succeeds; the setting is the switch.
+name: Dependabot automerge
+
+on: pull_request
+
+permissions: {}
+
+jobs:
+  automerge:
+    name: Enable auto-merge
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.repository == 'social-home-io/esphome-dashboard'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98  # v3.1.0
+      - name: Auto-merge patch and minor updates (never ESPHome)
+        if: >-
+          (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+           steps.meta.outputs.update-type == 'version-update:semver-minor') &&
+          steps.meta.outputs.package-ecosystem != 'pip' &&
+          !contains(steps.meta.outputs.dependency-names, 'esphome')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          query='query($owner: String!, $name: String!) {
+            repository(owner: $owner, name: $name) { autoMergeAllowed } }'
+          allowed=$(gh api graphql -F owner="${REPO%/*}" -F name="${REPO#*/}" -f query="$query" \
+            --jq .data.repository.autoMergeAllowed)
+          if [ "$allowed" != "true" ]; then
+            echo "::notice::Auto-merge is off for this repository; leaving ${PR_URL} for a human."
+            exit 0
+          fi
+          gh pr merge --auto --squash "$PR_URL"
