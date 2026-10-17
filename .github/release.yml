@@ -6,7 +6,6 @@ changelog:
       - dependencies
     authors:
       - dependabot
-      - renovate
   categories:
     - title: Breaking changes
       labels: [breaking]

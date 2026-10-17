@@ -63,6 +63,32 @@ class AcceptedTest(unittest.TestCase):
         acc = checks.load_accepted(json.loads(path.read_text(encoding="utf-8")))
         self.assertTrue(all(r.reason for r in acc.all()))
 
+    def test_date_rules_hold_every_day(self) -> None:
+        """The date heading is accepted on any weekday and month, not only the
+        day the rules were written (they once named Wednesday and October)."""
+        path = ROOT / "scripts" / "screenshots" / "accepted.json"
+        acc = checks.load_accepted(json.loads(path.read_text(encoding="utf-8")))
+        en_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        de_days = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+        en_months = ["January", "February", "March", "April", "May", "June", "July",
+                     "August", "September", "October", "November", "December"]
+        de_months = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
+                     "August", "September", "Oktober", "November", "Dezember"]
+        dates = {
+            "en": [f"{d}, {m} {n}" for d in en_days for m in en_months for n in (1, 17, 31)],
+            "de": [f"{d}, {n}. {m}" for d in de_days for m in de_months for n in (1, 17, 31)],
+        }
+        # The offsets CI saw for the date (Saturday, 17 October 2026).
+        seen = {"overview": {"dx": 0, "dy": -2.2, "dw": -3.3, "dh": 5},
+                "offline": {"dx": 0, "dy": -2.2, "dw": -3.3, "dh": 5},
+                "night": {"dx": 1.9, "dy": -3, "dw": -1.8, "dh": 40}}
+        for screen, delta in seen.items():
+            for locale, texts in dates.items():
+                shot = {"screen": screen, "locale": locale, "scheme": "light"}
+                rows = [{"text": text, **delta} for text in texts]
+                with self.subTest(screen=screen, locale=locale):
+                    self.assertEqual(checks.offset_failures(shot, rows, acc), [])
+
     def test_scope(self) -> None:
         acc = checks.load_accepted({"offsets": [
             {"screens": ["overview"], "locales": ["en"], "max": {"dx": 9}, "reason": "r"}]})

@@ -2,7 +2,7 @@
 # One-time devcontainer bootstrap (postCreateCommand).
 #
 # Installs the same tools CI uses, at the same versions:
-#   - ESPHome pinned in .github/esphome.env (Renovate bumps it there),
+#   - ESPHome pinned in .github/esphome-requirements.txt (Dependabot bumps it),
 #   - yamllint,
 # and configures the host C++ tests so `ctest` works on first launch.
 #
@@ -19,13 +19,13 @@ set -euo pipefail
 echo 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox --disable-dev-shm-usage"' \
 	| sudo tee /etc/chromium.d/devcontainer.conf >/dev/null
 
-# Load ESPHOME_VERSION from the pin file (KEY=VALUE lines only, like CI).
-eval "$(grep -E '^[A-Z_]+=' .github/esphome.env)"
+# The pinned version, for the message below (CI reads it the same way).
+ESPHOME_VERSION="$(sed -n 's/^esphome==//p' .github/esphome-requirements.txt)"
 
 uv venv .venv --seed
 # ESPHome brings Pillow, which scripts/screenshots (panel vs browser shots)
 # needs too; run it with .venv/bin/python.
-uv pip install --refresh "esphome==${ESPHOME_VERSION}" yamllint
+uv pip install --refresh -r .github/esphome-requirements.txt yamllint
 
 # Host C++ tests: configure once; `cmake --build build/tests && ctest
 # --test-dir build/tests` from then on.

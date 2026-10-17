@@ -190,7 +190,7 @@ before the first board (setup, first boot) it is day.
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install "esphome==$(sed -n 's/^ESPHOME_VERSION=//p' .github/esphome.env)" yamllint
+.venv/bin/pip install -r .github/esphome-requirements.txt yamllint
 .venv/bin/esphome config builds/guition-jc8012p4a1.factory.yaml
 .venv/bin/esphome compile builds/guition-jc8012p4a1.factory.yaml
 .venv/bin/esphome run builds/guition-jc8012p4a1.factory.yaml   # flash over USB
@@ -242,7 +242,7 @@ alone; the release's own deploy follows once the images are attached.
   binaries attached to releases and served by the web installer are
   distributed under the **GNU GPL v3**. The sources to rebuild them are this
   repository at the release tag plus the pinned ESPHome release
-  (`.github/esphome.env`). It also contains LVGL (MIT) and Mbed TLS
+  (`.github/esphome-requirements.txt`). It also contains LVGL (MIT) and Mbed TLS
   (Apache-2.0, part of ESP-IDF).
 - **Emoji** are [Twemoji](https://github.com/jdecked/twemoji) graphics
   (© Twitter, Inc and other contributors, © jdecked and other contributors),

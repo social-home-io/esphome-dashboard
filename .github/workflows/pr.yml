@@ -48,14 +48,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Load pinned ESPHome version
-        run: grep -E '^[A-Z_]+=' .github/esphome.env >> "$GITHUB_ENV"
+        run: echo "ESPHOME_VERSION=$(sed -n 's/^esphome==//p' .github/esphome-requirements.txt)" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: SDL2, OpenSSL and Mbed TLS headers
         run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libssl-dev libmbedtls-dev
       - name: Install ESPHome ${{ env.ESPHOME_VERSION }}
-        run: pip install "esphome==${ESPHOME_VERSION}"
+        run: pip install -r .github/esphome-requirements.txt
       - name: Cache build
         uses: actions/cache@v6
         with:
@@ -90,12 +90,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Load pinned ESPHome version
-        run: grep -E '^[A-Z_]+=' .github/esphome.env >> "$GITHUB_ENV"
+        run: echo "ESPHOME_VERSION=$(sed -n 's/^esphome==//p' .github/esphome-requirements.txt)" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Install ESPHome ${{ env.ESPHOME_VERSION }}
-        run: pip install "esphome==${ESPHOME_VERSION}"
+        run: pip install -r .github/esphome-requirements.txt
       - name: Cache ESP-IDF toolchain and build
         uses: actions/cache@v6
         with:
@@ -124,3 +124,22 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 14
+
+  ci-passed:
+    # One check name for branch protection, whatever the device matrix (the
+    # build job's names change with devices/manifest.json). Auto-merge waits
+    # only for required checks, so requiring this one makes it wait for every
+    # compile and host test.
+    name: CI passed
+    needs: [lint, host-tests, host-sdl, matrix, build]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every CI job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: ${RESULTS}"
+          for result in ${RESULTS}; do
+            [ "$result" = success ] || exit 1
+          done

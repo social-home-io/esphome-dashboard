@@ -53,12 +53,12 @@ jobs:
         with:
           ref: ${{ env.TAG }}
       - name: Load pinned ESPHome version
-        run: grep -E '^[A-Z_]+=' .github/esphome.env >> "$GITHUB_ENV"
+        run: echo "ESPHOME_VERSION=$(sed -n 's/^esphome==//p' .github/esphome-requirements.txt)" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Install ESPHome ${{ env.ESPHOME_VERSION }}
-        run: pip install "esphome==${ESPHOME_VERSION}"
+        run: pip install -r .github/esphome-requirements.txt
       - name: esphome compile
         run: esphome -s firmware_version "${TAG}" compile "builds/${{ matrix.slug }}.factory.yaml"
       - name: Collect firmware

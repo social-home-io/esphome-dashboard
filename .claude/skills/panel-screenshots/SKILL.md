@@ -25,7 +25,7 @@ laid over an earlier one.
 - The devcontainer (`.devcontainer/`): ESPHome in `.venv`, SDL2 / Mbed TLS,
   Chromium, Pillow (ESPHome brings it). Outside it: `cmake build-essential
   libsdl2-dev libssl-dev libmbedtls-dev chromium` from apt and ESPHome at the
-  version in `.github/esphome.env` in `.venv` (`pip install pillow` if that
+  version in `.github/esphome-requirements.txt` in `.venv` (`pip install pillow` if that
   venv has none). No X display is needed — the SDL panel is headless.
 - **A socialhome checkout** at the commit the contract pins
   (`SOCIALHOME_REF` in `tests/fixtures/display-api/SOURCE`), or the

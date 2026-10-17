@@ -16,7 +16,7 @@ PolyForm Noncommercial).
 Open the repo in VS Code with the Dev Containers extension (or any
 devcontainer-capable editor / GitHub Codespaces) and it sets itself up
 with what CI uses: ESPHome at the version pinned in
-`.github/esphome.env`, yamllint, CMake for the host C++ tests, and SDL2 +
+`.github/esphome-requirements.txt`, yamllint, CMake for the host C++ tests, and SDL2 +
 Mbed TLS for the host SDL panel, plus Xvfb (`DISPLAY=:99`) and Chromium
 for screenshots.
 

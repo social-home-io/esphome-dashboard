@@ -51,6 +51,18 @@ class DeviceMatrixTest(unittest.TestCase):
             device_matrix.build_matrix({"devices": []})
 
 
+class EsphomePinTest(unittest.TestCase):
+    def test_one_exact_esphome_pin(self) -> None:
+        """CI reads the version with `sed -n 's/^esphome==//p'`: one exact pin, nothing else."""
+        lines = [
+            line.strip()
+            for line in (ROOT / ".github" / "esphome-requirements.txt").read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertEqual(len(lines), 1, lines)
+        self.assertRegex(lines[0], r"^esphome==[0-9]{4}\.[0-9]{1,2}\.[0-9]+$")
+
+
 class WebManifestTest(unittest.TestCase):
     def test_manifest_shape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

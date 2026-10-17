@@ -37,7 +37,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Load pinned ESPHome version and Social Home commit
-        run: cat .github/esphome.env tests/fixtures/display-api/SOURCE | grep -E '^[A-Z_]+=' >> "$GITHUB_ENV"
+        run: |
+          echo "ESPHOME_VERSION=$(sed -n 's/^esphome==//p' .github/esphome-requirements.txt)" >> "$GITHUB_ENV"
+          grep -E '^[A-Z_]+=' tests/fixtures/display-api/SOURCE >> "$GITHUB_ENV"
       - name: Social Home at the pinned commit
         uses: actions/checkout@v7
         with:
@@ -59,7 +61,7 @@ jobs:
       - name: Install ESPHome ${{ env.ESPHOME_VERSION }}
         run: |
           python3.13 -m venv .venv
-          .venv/bin/pip install "esphome==${ESPHOME_VERSION}" pillow
+          .venv/bin/pip install -r .github/esphome-requirements.txt pillow
       - name: Install Social Home's dependencies
         env:
           # A shallow checkout has no tags for hatch-vcs.
