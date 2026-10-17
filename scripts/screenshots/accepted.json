@@ -15,7 +15,7 @@
    "reason": "Message line with an emoji: the panel splits it into a label per word plus a picture; the run of labels is a few px narrower than the browser's text box (Δw)."},
   {"screens": ["overview", "offline", "messages", "reader"], "text": "^music is in room \\d+ today", "max": {"dw": 32, "dh": 30},
    "reason": "Box shape: a message whose emoji wraps to a second line — the browser's text box spans both lines, the panel's words are one line with the picture under them (Δh); the run of word labels is a little narrower (Δw)."},
-  {"screens": ["overview", "offline"], "text": "^(new|neu|als nächstes|next|today|heute|wednesday, october \\d+|mittwoch, \\d+\\. oktober|\\d+)$", "max": {"dh": 6},
+  {"screens": ["overview", "offline"], "text": "^(new|neu|als nächstes|next|today|heute|(monday|tuesday|wednesday|thursday|friday|saturday|sunday), [a-z]+ \\d+|(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag), \\d+\\. [a-zä]+|\\d+)$", "max": {"dh": 6},
    "reason": "Small labels whose CSS line box and the panel's font line differ by a few px (badges, headings, the date)."},
   {"screens": ["overview", "offline"], "text": "^(now|jetzt)$", "max": {"dx": 14, "dy": 4, "dw": 6},
    "reason": "The today timeline's 'now' marker moves with the clock (~1 px a minute and between refreshes): panel and browser draw it from fetches up to 30 s apart and round its position differently. Seen 9 px apart in CI."},
@@ -31,12 +31,12 @@
   {"screens": ["map"], "text": "^(zuletzt gesehen vor .+|last seen .+)$", "max": {"dx": 24},
    "reason": "A stale spot's '⏱ last seen …': one inline run in the browser, so a second line starts under the ⏱ and the text box at the ⏱; on the panel the ⏱ is a picture beside the wrapped label (Δx = the ⏱ and its space)."},
 
-  {"screens": ["night"], "text": "^(tap to show the dashboard|tippen, um das dashboard zu zeigen|wednesday, october \\d+|mittwoch, \\d+\\. oktober)$", "max": {"dy": 48, "dh": 44},
+  {"screens": ["night"], "text": "^(tap to show the dashboard|tippen, um das dashboard zu zeigen|(monday|tuesday|wednesday|thursday|friday|saturday|sunday), [a-z]+ \\d+|(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag), \\d+\\. [a-zä]+)$", "max": {"dy": 48, "dh": 44},
    "reason": "Box shape: the hint's and the date's CSS line boxes are 40 px taller than the panel's font lines (the night layout's big line-height)."},
   {"screens": ["night"], "text": "^(\\d+:\\d+|school|schule|tomorrow|morgen)$", "max": {"dx": 8, "dy": 9, "dw": 6},
    "reason": "Night clock and the 'Tomorrow' line: font line vs CSS line box, the light 200 weight's digits."},
 
-  {"screens": ["lock", "pinpad", "wrong-pin", "last-try"], "text": "^(the vizeli household|\\d+:\\d+|wednesday, october \\d+|mittwoch, \\d+\\. oktober)$", "max": {"dx": 10, "dw": 20},
+  {"screens": ["lock", "pinpad", "wrong-pin", "last-try"], "text": "^(the vizeli household|\\d+:\\d+|(monday|tuesday|wednesday|thursday|friday|saturday|sunday), [a-z]+ \\d+|(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag), \\d+\\. [a-zä]+)$", "max": {"dx": 10, "dw": 20},
    "reason": "Lock screen header: the household name, the clock's light digits and the date come out a little narrower or wider than Chromium's (hinted glyphs at 24–160 px)."}
  ],
  "texts": [
