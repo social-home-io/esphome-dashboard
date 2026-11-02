@@ -182,6 +182,46 @@ struct MapFetch {
   void reset() { *this = MapFetch{}; }
 };
 
+/// The photo screensaver's round (GET /frame).
+constexpr const char *FRAME_PATH = "/api/display/v1/frame";
+
+/// The screensaver may start: it is on (`minutes` > 0), it isn't night, and
+/// nobody touched the panel for `minutes`.
+bool frame_due(int minutes, uint32_t inactive_ms, bool night);
+
+/// The photo's caption, one line as the tablet shows it: "date · album"
+/// (just one of them when the other is empty).
+std::string frame_caption(const std::string &date, const std::string &album);
+
+/// A photo's url asked fitted into the panel's screen: url?w=&h=.
+std::string frame_photo_path(const std::string &url, int width, int height);
+
+/// What to do after a screensaver photo answered.
+enum class FrameStep : uint8_t {
+  SHOW,  ///< 200 with a picture: show it
+  SKIP,  ///< gone or no picture (404, a bad PNG): the next one
+  WAIT,  ///< 429 / no answer / 5xx: the same one again later
+  STOP,  ///< 409 NIGHT, 423 locked, 401, or three failures in a row: end
+};
+
+/// Where the screensaver is in its round. Pure bookkeeping.
+struct FrameCursor {
+  size_t index{0};
+  size_t size{0};
+  int failures{0};
+  bool over{true};  ///< the round is shown through (or none yet): ask again
+
+  static constexpr int MAX_FAILURES = 3;
+
+  void start(size_t count);
+  bool round_over() const { return this->over; }
+  /// The photo at `index` answered `status` (0: no answer); `picture`: it
+  /// decoded.
+  FrameStep answered(int status, bool picture);
+  /// The photo at `index` was shown: on to the next one.
+  void advance();
+};
+
 /// Geometry of the 1280×800 browser dashboard, scaled to any panel.
 ///
 /// `scale` is ui_scale × min(width / 1280, height / 800), so a bigger panel

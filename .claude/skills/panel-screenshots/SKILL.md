@@ -53,8 +53,9 @@ laid over an earlier one.
 ```
 
 Options: `--screens a,b,…` (default all: `setup, pairing, overview,
-messages, notes, map, reader, picture, settings, night, lock, pinpad,
-wrong-pin, last-try, offline`), `--ports BASE` (Social Home on BASE, its
+messages, notes, map, reader, picture, frame, settings, night, lock,
+pinpad, wrong-pin, last-try, offline` — `frame` is the photo screensaver:
+it turns it on for a minute's idle and waits ~70 s for the first photo), `--ports BASE` (Social Home on BASE, its
 dashboard on BASE+1, the run's control API on BASE+2; default 19780 — give
 each parallel run its own), `--time-zone` (see below), `--esphome`,
 `--panel-binary` (skip the build), `--chromium`, `--browser-font
@@ -70,7 +71,8 @@ error or Ctrl-C:
    Leo 6 (picture view); Home / School / Work / Gran's zones and where each
    is; Mia's and Leo's timetables (a cancelled lesson, a moved room); timed
    and all-day calendar items; chores; shopping; seven sticky notes;
-   household chat with `@mia`, `@leo` and an `@here`. Dashboard on, tablet
+   household chat with `@mia`, `@leo` and an `@here`; a household album
+   "Summer by the lake" with three drawn pictures (the screensaver's). Dashboard on, tablet
    password, PIN `2468`. Household time is ~16:05 (a time zone is
    picked so the real clock reads that), so lessons are under way — a
    weekday where one is, else (Saturday morning to Sunday morning UTC) the

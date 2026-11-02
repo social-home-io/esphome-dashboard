@@ -9,7 +9,8 @@ family the release sign-off uses — Anna, Pascal, Mia (11, reads) and Leo (6,
 picture view); home / school / work / Gran's zones and where everyone is; a
 school timetable each for Mia and Leo (a cancelled and a moved lesson);
 calendars with timed and all-day items; chores; a shopping list; sticky
-notes; household chat with @mentions and an @here — then turns the wall
+notes; household chat with @mentions and an @here; a household photo album
+(three drawn pictures with their days taken) — then turns the wall
 dashboard on (with a tablet password and a PIN) and serves a small control
 API for the screenshot run:
 
@@ -18,6 +19,8 @@ API for the screenshot run:
   POST /locale?l=en               the dashboard language
   POST /theme?mode=light|dark|auto
   POST /unlock                    the admin lifts every panel's privacy lock
+  POST /frame?on=1|0              the photo screensaver after 1 min (the seeded
+                                  album "Summer by the lake") / off
   GET  /cookie                    a fresh tablet session cookie (sh_dash)
   GET  /info                      ports, time zone, local time, user ids
 
@@ -179,6 +182,58 @@ def avatar_png(emoji: str, bg: str, initial: str) -> bytes:
     return buf.getvalue()
 
 
+#: The screensaver album: (scene, size, day taken). Drawn, never a photo.
+PHOTOS = (
+    ("lake", (2560, 1920), "2026-07-12"),
+    ("boat", (1440, 1920), "2026-07-13"),
+    ("cake", (2560, 1440), "2026-07-14"),
+)
+
+
+def scene_jpeg(kind: str, size: tuple[int, int]) -> bytes:
+    """A simple drawn picture standing in for a holiday photo: a sky
+    gradient, a sun, hills and a lake (a boat on it, or a birthday cake)."""
+    w, h = size
+    img = Image.new("RGB", size)
+    d = ImageDraw.Draw(img)
+    top, bottom = {"lake": ((70, 130, 200), (250, 200, 150)),
+                   "boat": ((40, 90, 170), (180, 210, 240)),
+                   "cake": ((250, 220, 230), (250, 240, 220))}[kind]
+    horizon = int(h * (0.62 if kind != "cake" else 1.0))
+    for y in range(horizon):
+        t = y / max(horizon - 1, 1)
+        d.line([(0, y), (w, y)], fill=tuple(int(a + (b - a) * t) for a, b in zip(top, bottom)))
+    if kind == "cake":
+        d.rectangle([0, int(h * 0.72), w, h], fill=(150, 100, 70))  # the table
+        cx, cw = w // 2, int(w * 0.36)
+        d.rectangle([cx - cw // 2, int(h * 0.42), cx + cw // 2, int(h * 0.74)], fill=(250, 245, 240))
+        d.rectangle([cx - cw // 2, int(h * 0.52), cx + cw // 2, int(h * 0.56)], fill=(230, 90, 120))
+        for k in range(6):
+            x = cx - cw // 2 + int(cw * (k + 0.5) / 6)
+            d.rectangle([x - 8, int(h * 0.32), x + 8, int(h * 0.42)], fill=(120, 170, 230))
+            d.ellipse([x - 12, int(h * 0.27), x + 12, int(h * 0.32)], fill=(255, 190, 60))
+    else:
+        r = int(min(w, h) * 0.07)
+        sx, sy = int(w * 0.72), int(horizon * 0.55)
+        d.ellipse([sx - r, sy - r, sx + r, sy + r], fill=(255, 230, 150))
+        d.polygon([(0, horizon), (int(w * 0.2), int(horizon * 0.72)), (int(w * 0.45), horizon)],
+                  fill=(60, 110, 80))
+        d.polygon([(int(w * 0.3), horizon), (int(w * 0.6), int(horizon * 0.66)), (w, horizon)],
+                  fill=(45, 95, 70))
+        for y in range(horizon, h):
+            t = (y - horizon) / max(h - horizon - 1, 1)
+            d.line([(0, y), (w, y)], fill=(int(40 + 30 * t), int(90 + 20 * t), int(150 - 30 * t)))
+        if kind == "boat":
+            bx, by, bw = int(w * 0.45), int(horizon + (h - horizon) * 0.35), int(w * 0.3)
+            d.polygon([(bx, by), (bx + bw, by), (bx + int(bw * 0.8), by + int(bw * 0.18)),
+                       (bx + int(bw * 0.2), by + int(bw * 0.18))], fill=(200, 60, 50))
+            d.polygon([(bx + bw // 2, by - int(bw * 0.9)), (bx + bw // 2, by - 4),
+                       (bx + int(bw * 0.9), by - 4)], fill=(250, 250, 245))
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=90)
+    return out.getvalue()
+
+
 def auth(tok: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {tok}"}
 
@@ -258,6 +313,7 @@ class Household:
         await self.seed_map()
         await self.seed_lists()
         await self.seed_chat()
+        await self.seed_photos()
 
     async def add_timetable(self, who, name, color, entries, overrides) -> None:
         tt = (await self.api("POST", "/api/timetables", codes=(201,), json={
@@ -390,6 +446,22 @@ class Household:
                 "UPDATE conversation_messages SET created_at=?, type=?, content=? WHERE id=?",
                 (utc_stamp(when), mtype, text, body["id"]))
 
+    async def seed_photos(self) -> None:
+        """A household album everyone sees, for the photo screensaver: three
+        drawn pictures (no one's real photo), oldest day first — the order
+        the screensaver shows a small album in."""
+        album = await self.api("POST", "/api/gallery/albums", codes=(201,),
+                               json={"name": "Summer by the lake"})
+        self.album = album["id"]
+        for kind, size, taken in PHOTOS:
+            form = aiohttp.FormData()
+            form.add_field("file", scene_jpeg(kind, size), filename=f"{kind}.jpg",
+                           content_type="image/jpeg")
+            item = await self.api("POST", f"/api/gallery/albums/{self.album}/items",
+                                  codes=(201,), data=form)
+            await self.db.enqueue("UPDATE gallery_items SET taken_at=? WHERE id=?",
+                                  (taken, item["id"]))
+
     async def enable_dashboard(self) -> None:
         await self.api("PUT", "/api/admin/dashboard/password", json={"password": PASSWORD})
         await self.api("PUT", "/api/admin/dashboard/pin", json={"pin": PIN})
@@ -434,6 +506,14 @@ class Household:
             out.append(r.status)
         return web.json_response(out)
 
+    async def h_frame(self, req: web.Request) -> web.Response:
+        if req.query.get("on") == "1":
+            body = {"photo_frame": True, "photo_frame_minutes": 1,
+                    "photo_frame_albums": [self.album]}
+        else:
+            body = {"photo_frame": False}
+        return await self._passthrough("PUT", "/api/admin/dashboard", json=body)
+
     async def h_cookie(self, req: web.Request) -> web.Response:
         r = await self.s.post(f"{self.dbase}/login", data={"password": PASSWORD, "keep": "1"},
                               headers={"Origin": self.dbase}, allow_redirects=False)
@@ -459,6 +539,7 @@ async def main() -> None:
     ctl.router.add_post("/locale", h.h_locale)
     ctl.router.add_post("/theme", h.h_theme)
     ctl.router.add_post("/unlock", h.h_unlock)
+    ctl.router.add_post("/frame", h.h_frame)
     ctl.router.add_get("/cookie", h.h_cookie)
     ctl.router.add_get("/info", h.h_info)
     crun = web.AppRunner(ctl)

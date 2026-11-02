@@ -105,6 +105,8 @@ void SocialHomeDisplay::setup() {
   this->publish_panel_key_();
   this->images_.set_factory([this](const std::string &path) { return this->request_(path); });
   this->map_.set_factory([this](const std::string &path) { return this->request_(path); });
+  this->photos_.set_factory([this](const std::string &path) { return this->request_(path); });
+  this->photos_.set_screen(this->screen_width_, this->screen_height_);
   this->set_mode_(Mode::BOOT);
 }
 
@@ -420,6 +422,7 @@ void SocialHomeDisplay::loop() {
   this->publish_ha_unlock_();
 
   this->tick_idle_();
+  this->tick_screensaver_();
   this->apply_backlight_();
   if (this->dirty_)
     this->render_();
@@ -1454,6 +1457,9 @@ void SocialHomeDisplay::render_() {
       }
       break;
   }
+  // A board rebuilt under the photo screensaver stays hidden behind it.
+  if (this->saver_layer_ != nullptr)
+    this->hide_board_(true);
   if (this->main_scroll_ != nullptr && this->keep_scroll_ > 0) {
     lv_obj_update_layout(this->main_scroll_);
     lv_obj_scroll_to_y(this->main_scroll_, this->keep_scroll_, LV_ANIM_OFF);

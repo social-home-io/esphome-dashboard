@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "parser.h"
 
-#include <cstring>
+#include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <utility>
 
 // Same configuration as ESPHome's json component (json_util.h), so every
@@ -320,6 +321,7 @@ void header(JO root, Header &h) {
   h.settings.night_end = s(st["night_end"]);
   h.settings.pin_set = b(st["pin_set"]);
   h.settings.ha_unlock = b(st["ha_unlock"]);
+  h.settings.photo_frame_minutes = std::max(i(st["photo_frame_minutes"]), 0);
   JV rail = root["rail"];
   h.rail.shown = b(rail["shown"], true);
   h.rail.many = b(rail["many"]);
@@ -874,6 +876,41 @@ ApiError parse_error(const char *data, size_t len) {
   out.remaining = i(e["params"]["remaining"], -1);
   out.retry_after = i(e["params"]["retry_after"], 0);
   return out;
+}
+
+ParseResult parse_frame(const char *data, size_t len, FrameRound &out) {
+  ArduinoJson::JsonDocument doc(allocator());
+  ParseResult r = load(data, len, doc);
+  if (r != ParseResult::OK)
+    return r;
+  JO root = doc.as<JO>();
+  if ((r = check_version(root)) != ParseResult::OK)
+    return r;
+  if (!root["photos"].is<JA>())
+    return ParseResult::BAD_SHAPE;
+  FrameRound f;
+  f.interval_s = std::max(i(root["interval_s"], 20), 1);
+  f.fade_ms = std::max(i(root["fade_ms"], 2000), 0);
+  JV image = root["image"];
+  f.width = std::max(i(image["width"], 1280), 1);
+  f.height = std::max(i(image["height"], 800), 1);
+  for (JV item : root["photos"].as<JA>()) {
+    if (!item.is<JO>())
+      continue;
+    FramePhoto p;
+    p.id = s(item["id"]);
+    p.url = s(item["url"]);
+    p.width = i(item["width"]);
+    p.height = i(item["height"]);
+    p.date = s(item["date"]);
+    p.album = s(item["album"]);
+    // Only a path on this server: never another host.
+    if (p.url.empty() || p.url[0] != '/' || p.url.compare(0, 2, "//") == 0)
+      continue;
+    f.photos.push_back(std::move(p));
+  }
+  out = std::move(f);
+  return ParseResult::OK;
 }
 
 ParseResult parse_unlocked(const char *data, size_t len) {

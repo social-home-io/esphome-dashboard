@@ -1019,3 +1019,55 @@ TEST(strike_line_sits_where_lvgl_strikes_a_label) {
   CHECK_EQ(strike_line(26, 5, 0).h, 1);
   CHECK_EQ(strike_line(26, 5, 2).y, 15);
 }
+
+TEST(screensaver_starts_after_the_idle_minutes_by_day_only) {
+  CHECK(!frame_due(0, 3600000, false));  // off
+  CHECK(!frame_due(5, 299999, false));
+  CHECK(frame_due(5, 300000, false));
+  CHECK(!frame_due(5, 3600000, true));  // the night screen wins
+  CHECK(!frame_due(-1, 3600000, false));
+}
+
+TEST(screensaver_caption_is_one_line) {
+  CHECK_EQ(frame_caption("July 12, 2026", "Summer"), std::string("July 12, 2026 \xc2\xb7 Summer"));
+  CHECK_EQ(frame_caption("", "Summer"), std::string("Summer"));
+  CHECK_EQ(frame_caption("July 12, 2026", ""), std::string("July 12, 2026"));
+  CHECK(frame_caption("", "").empty());
+}
+
+TEST(screensaver_asks_photos_for_its_screen) {
+  CHECK_EQ(frame_photo_path("/api/display/v1/photo/ph-1.png", 1280, 800),
+           std::string("/api/display/v1/photo/ph-1.png?w=1280&h=800"));
+  CHECK_EQ(frame_photo_path("/x.png?v=2", 1024, 600), std::string("/x.png?v=2&w=1024&h=600"));
+}
+
+TEST(screensaver_cursor_walks_the_round) {
+  FrameCursor c;
+  CHECK(c.round_over());  // none yet: ask for a round
+  c.start(3);
+  CHECK(!c.round_over());
+  CHECK(c.answered(200, true) == FrameStep::SHOW);
+  c.advance();
+  CHECK_EQ(c.index, size_t{1});
+  // Gone meanwhile (404) or not a picture: the next one.
+  CHECK(c.answered(404, false) == FrameStep::SKIP);
+  CHECK_EQ(c.index, size_t{2});
+  CHECK(c.answered(200, true) == FrameStep::SHOW);  // resets the failures
+  c.advance();
+  CHECK(c.round_over());
+  c.start(0);
+  CHECK(c.round_over());
+}
+
+TEST(screensaver_cursor_stops_on_night_lock_and_repeated_failures) {
+  FrameCursor c;
+  c.start(10);
+  CHECK(c.answered(409, false) == FrameStep::STOP);
+  CHECK(c.answered(423, false) == FrameStep::STOP);
+  CHECK(c.answered(401, false) == FrameStep::STOP);
+  c.start(10);
+  CHECK(c.answered(429, false) == FrameStep::WAIT);
+  CHECK_EQ(c.index, size_t{0});  // the same one again later
+  CHECK(c.answered(0, false) == FrameStep::WAIT);
+  CHECK(c.answered(404, false) == FrameStep::STOP);  // the third failure in a row
+}

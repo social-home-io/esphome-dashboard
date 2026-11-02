@@ -45,6 +45,8 @@ ClaimResult parse_pair_claim(int status, const char *data, size_t len, PairStatu
 std::string parse_error_code(const char *data, size_t len);
 /// The whole error body (code, detail, params); empty code if none.
 ApiError parse_error(const char *data, size_t len);
+/// 200 of GET /frame: the photo screensaver's round.
+ParseResult parse_frame(const char *data, size_t len, FrameRound &out);
 /// 200 of POST /unlock: true when the panel is unlocked ({"locked": false}).
 ParseResult parse_unlocked(const char *data, size_t len);
 /// 200 of POST /ack ({"acknowledged": true}).

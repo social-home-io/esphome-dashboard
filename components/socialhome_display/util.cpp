@@ -803,4 +803,54 @@ RefreshArrow refresh_arrow(int size) {
   return a;
 }
 
+// ---- photo screensaver ---------------------------------------------------
+
+bool frame_due(int minutes, uint32_t inactive_ms, bool night) {
+  if (minutes <= 0 || night)
+    return false;
+  return inactive_ms >= static_cast<uint32_t>(minutes) * 60000u;
+}
+
+std::string frame_caption(const std::string &date, const std::string &album) {
+  if (date.empty())
+    return album;
+  if (album.empty())
+    return date;
+  return date + " \xc2\xb7 " + album;  // U+00B7 middle dot
+}
+
+std::string frame_photo_path(const std::string &url, int width, int height) {
+  const char *sep = url.find('?') == std::string::npos ? "?" : "&";
+  return url + sep + "w=" + std::to_string(width) + "&h=" + std::to_string(height);
+}
+
+void FrameCursor::start(size_t count) {
+  this->index = 0;
+  this->size = count;
+  this->failures = 0;
+  this->over = count == 0;
+}
+
+FrameStep FrameCursor::answered(int status, bool picture) {
+  if (status == 200 && picture) {
+    this->failures = 0;
+    return FrameStep::SHOW;
+  }
+  if (status == 401 || status == 409 || status == 423)
+    return FrameStep::STOP;
+  if (++this->failures >= MAX_FAILURES)
+    return FrameStep::STOP;
+  if (status == 200 || status == 404 || status == 400) {
+    this->advance();
+    return FrameStep::SKIP;
+  }
+  return FrameStep::WAIT;
+}
+
+void FrameCursor::advance() {
+  if (++this->index >= this->size)
+    this->over = true;
+}
+
 }  // namespace esphome::socialhome_display
+

@@ -36,6 +36,7 @@
 #include "model.h"
 #include "net.h"
 #include "panel_strings.h"
+#include "photo_frame.h"
 #include "theme_cache.h"
 #include "util.h"
 
@@ -239,6 +240,19 @@ class SocialHomeDisplay : public Component {
   void navigate_(const std::string &path);
   void tick_clock_();
   void tick_idle_();
+  // ---- photo screensaver (ui_screensaver.cpp)
+  /// It may run now: the board is up, daytime, the setting on, the screen
+  /// on and no settings sheet open.
+  bool screensaver_allowed_() const;
+  void tick_screensaver_();
+  void build_screensaver_();
+  /// Crossfade the waiting photo in over the shown one.
+  void show_photo_();
+  void fade_done_();
+  /// Hide (or show again) the board under the screensaver.
+  void hide_board_(bool hide);
+  void stop_screensaver_();
+  static void on_screensaver_tap_(lv_event_t *event);
   void apply_backlight_();
   void render_();
   std::string clock_text_() const;
@@ -431,6 +445,17 @@ class SocialHomeDisplay : public Component {
   HttpWorker api_{"sh_api", 4};
   ImageCache images_;
   MapPicture map_;
+  /// The photo screensaver's pictures, and its layer over everything.
+  PhotoFrame photos_;
+  bool saver_running_{false};
+  bool saver_fading_{false};
+  uint32_t saver_shown_at_{0};
+  uint32_t saver_retry_at_{0};
+  int saver_front_{0};
+  lv_obj_t *saver_layer_{nullptr};
+  lv_obj_t *saver_img_[2]{nullptr, nullptr};
+  lv_obj_t *saver_caption_{nullptr};
+  lv_obj_t *saver_caption_label_{nullptr};
   /// School stripe tiles, one per bar fill and opacity: a household has a
   /// handful of colours, × running / past, × light / dark / night. Kept
   /// for the panel's life (bars on screen point at them).

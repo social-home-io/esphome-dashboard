@@ -39,7 +39,7 @@ TEST(overview_header) {
   const Header &h = b.header;
   CHECK_EQ(h.api_version, 1);
   CHECK_EQ(h.view, std::string("overview"));
-  CHECK_EQ(h.view_key, std::string("b202181d92683fb8"));
+  CHECK_EQ(h.view_key, std::string("d4ec8e32cef389a6"));
   CHECK_EQ(h.household, std::string("Home"));
   CHECK(!h.rtl);
   CHECK_EQ(h.clock.time, std::string("14:32"));
@@ -529,4 +529,55 @@ TEST(pair_claim_errors) {
   CHECK(parse_pair_claim(500, "oops", 4, st) == ClaimResult::FAILED);
   CHECK(parse_pair_claim(401, "", 0, st) == ClaimResult::FAILED);
   CHECK(st.token.empty());
+}
+
+TEST(screensaver_setting) {
+  // Off in the documented household (null).
+  CHECK_EQ(board("home.json").header.settings.photo_frame_minutes, 0);
+  std::string on = with(check::fixture("home.json"), "\"photo_frame_minutes\": null", "\"photo_frame_minutes\": 5");
+  Board b;
+  CHECK(parse_board(on.data(), on.size(), b) == ParseResult::OK);
+  CHECK_EQ(b.header.settings.photo_frame_minutes, 5);
+  // Older servers don't send it: off.
+  const char *old = R"({"api_version": 1, "view": "overview", "settings": {"idle_return_minutes": 3},
+    "overview": {"today": {"mode": "empty", "empty": "Nothing today"}}})";
+  CHECK(parse_board(old, strlen(old), b) == ParseResult::OK);
+  CHECK_EQ(b.header.settings.photo_frame_minutes, 0);
+}
+
+TEST(screensaver_round) {
+  std::string json = check::fixture("frame.json");
+  FrameRound r;
+  CHECK(parse_frame(json.data(), json.size(), r) == ParseResult::OK);
+  CHECK_EQ(r.interval_s, 20);
+  CHECK_EQ(r.fade_ms, 2000);
+  CHECK_EQ(r.width, 1280);
+  CHECK_EQ(r.height, 800);
+  CHECK_EQ(r.photos.size(), size_t{3});
+  const FramePhoto &lake = r.photos[0];
+  CHECK_EQ(lake.id, std::string("ph-lake"));
+  CHECK_EQ(lake.url, std::string("/api/display/v1/photo/ph-lake.png"));
+  CHECK_EQ(lake.width, 1067);
+  CHECK_EQ(lake.height, 800);
+  CHECK_EQ(lake.date, std::string("July 12, 2026"));
+  CHECK_EQ(lake.album, std::string("Summer by the lake"));
+  CHECK_EQ(r.photos[2].album, std::string("Posts"));
+}
+
+TEST(screensaver_round_refuses_other_hosts_and_bad_shapes) {
+  const char *json = R"({"api_version": 1, "interval_s": 0, "fade_ms": -5, "photos": [
+    {"id": "a", "url": "http://evil.example/a.png"},
+    {"id": "b", "url": "//evil.example/b.png"},
+    {"id": "c", "url": "/api/display/v1/photo/c.png"},
+    "junk"]})";
+  FrameRound r;
+  CHECK(parse_frame(json, strlen(json), r) == ParseResult::OK);
+  CHECK_EQ(r.photos.size(), size_t{1});
+  CHECK_EQ(r.photos[0].id, std::string("c"));
+  CHECK_EQ(r.interval_s, 1);  // never a busy loop
+  CHECK_EQ(r.fade_ms, 0);
+  const char *none = R"({"api_version": 1})";
+  CHECK(parse_frame(none, strlen(none), r) == ParseResult::BAD_SHAPE);
+  const char *v2 = R"({"api_version": 2, "photos": []})";
+  CHECK(parse_frame(v2, strlen(v2), r) == ParseResult::WRONG_VERSION);
 }
