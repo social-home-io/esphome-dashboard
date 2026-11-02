@@ -1,7 +1,7 @@
 # Pinned Social Home display API contract (schemas + fixtures).
 # Copied verbatim from social-home-io/socialhome docs/display-api/v1/ at the
-# merge of social-home-io/socialhome#938 (Home Assistant may unlock wall panels).
+# merge commit of social-home-io/socialhome#1282 (wall photo screensaver).
 # Update: bump SOCIALHOME_REF, run `python3 scripts/display_api_contract.py --update`,
 # then fix the parser / host tests until `tests/cpp` passes again.
 SOCIALHOME_REPO=social-home-io/socialhome
-SOCIALHOME_REF=58fdd774c9b709cb27bc1f70f13765b4ea322b5a
+SOCIALHOME_REF=ccc0dc44e29e7e15b3b57a4baf0eb9a5e52a254b

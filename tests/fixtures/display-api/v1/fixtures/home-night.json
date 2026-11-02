@@ -206,6 +206,8 @@
       "list": [
         {
           "color": "#357bbb",
+          "day_count": 1,
+          "days": null,
           "icon": null,
           "is_break": false,
           "kind": "event",
@@ -222,6 +224,8 @@
         },
         {
           "color": null,
+          "day_count": 1,
+          "days": null,
           "icon": {
             "code": "1f392",
             "text": "🎒"
@@ -241,6 +245,8 @@
         },
         {
           "color": "#c44d72",
+          "day_count": 1,
+          "days": null,
           "icon": null,
           "is_break": false,
           "kind": "event",
@@ -257,6 +263,8 @@
         },
         {
           "color": "#357bbb",
+          "day_count": 1,
+          "days": null,
           "icon": null,
           "is_break": false,
           "kind": "event",
@@ -273,6 +281,8 @@
         },
         {
           "color": "#357bbb",
+          "day_count": 1,
+          "days": null,
           "icon": null,
           "is_break": false,
           "kind": "event",
@@ -289,6 +299,8 @@
         },
         {
           "color": "#357bbb",
+          "day_count": 1,
+          "days": null,
           "icon": null,
           "is_break": false,
           "kind": "event",
@@ -599,6 +611,7 @@
     "mention_sound": true,
     "night_end": "06:00",
     "night_start": "22:00",
+    "photo_frame_minutes": null,
     "pin_set": false
   },
   "tab": "overview",
@@ -621,5 +634,5 @@
     }
   ],
   "view": "overview",
-  "view_key": "42a374f2d187f456"
+  "view_key": "fb60d20a57eefc6f"
 }

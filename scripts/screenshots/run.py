@@ -413,6 +413,8 @@ class Run:
                 key = "mia" if who == "Mia" else "leo"
                 self.pair_shot(name(screen), url=f"/p/{users[key]}",
                                panel_steps=[self.panel.tap(item), "wait 12"])
+        if "frame" in screens:
+            self.frame(name("frame"), go_home)
         if "settings" in screens:
             self.panel.run(*go_home)
             clock = boxes.biggest_clock(self.panel.dump())
@@ -432,6 +434,20 @@ class Run:
             self.lock_flow(name, tree, go_home)
         if "offline" in screens:
             self.offline(name("offline"), go_home)
+
+    def frame(self, shot: str, go_home: list[str]) -> None:
+        """The photo screensaver: on after a minute without a touch, both
+        screens left alone that long; shot during the first photo (each
+        stays 20 s), then off again and the panel woken."""
+        assert self.panel and self.browser
+        self.ctl("POST", "/frame", on="1")
+        # A board poll (10 s) brings the setting; the taps reset the idle time.
+        self.panel.run(*go_home, "wait 48")
+        # Panel: 67 s after its last tap; the browser loaded just before.
+        self.pair_shot(shot, url="/", panel_steps=go_home[:2] + ["wait 268"],
+                       window=0, retry=False)
+        self.ctl("POST", "/frame", on="0")
+        self.panel.run(self.panel.tap((640, 400)), "wait 4", *go_home)
 
     def close_sheet(self) -> None:
         """Close the panel settings sheet with its last button."""

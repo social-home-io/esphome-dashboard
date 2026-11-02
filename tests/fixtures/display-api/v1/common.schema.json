@@ -173,6 +173,7 @@
         "mention_sound",
         "night_end",
         "night_start",
+        "photo_frame_minutes",
         "pin_set"
       ],
       "properties": {
@@ -197,6 +198,14 @@
         },
         "pin_set": {
           "type": "boolean"
+        },
+        "photo_frame_minutes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "The photo screensaver starts after this many minutes without a touch (GET /frame); null while it is off or no album is picked. Never at night or while locked."
         }
       }
     },
@@ -463,6 +472,8 @@
       "additionalProperties": false,
       "required": [
         "color",
+        "day_count",
+        "days",
         "icon",
         "is_break",
         "kind",
@@ -488,6 +499,18 @@
         },
         "time": {
           "type": "string"
+        },
+        "days": {
+          "description": "A multi-day event's days as one line (\"Mon 26 – Sat 31 · 6 days\") — show it instead of time when set; null for everything else.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "day_count": {
+          "description": "How many calendar days the item covers (1 unless it is a multi-day event).",
+          "type": "integer",
+          "minimum": 1
         },
         "title": {
           "type": "string"

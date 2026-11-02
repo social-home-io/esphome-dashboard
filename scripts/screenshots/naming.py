@@ -15,7 +15,7 @@ import re
 # In the order a run takes them.
 SCREENS = (
     "setup", "pairing",
-    "overview", "messages", "notes", "map", "reader", "picture", "settings",
+    "overview", "messages", "notes", "map", "reader", "picture", "frame", "settings",
     "night", "lock", "pinpad", "wrong-pin", "last-try", "offline",
 )
 # Only the panel has these (the browser's tablet has no address, pairing or

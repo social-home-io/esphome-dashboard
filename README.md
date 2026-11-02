@@ -9,8 +9,10 @@ on the wall.
 > pairs with the household and shows the household dashboard: Overview,
 > Messages (with a count of new ones on the tab), Notes, Map ("Who's where")
 > with the map picture, each person's page and the picture view for children,
-> the night screen and the privacy lock with its PIN pad, and "Got it" on
-> mentions, in the household's language. It joins Wi-Fi through Improv, works
+> the night screen and the privacy lock with its PIN pad, "Got it" on
+> mentions and — when an admin turns it on — the photo screensaver (photos
+> from the household albums they picked, after a while without a touch), in
+> the household's language. It joins Wi-Fi through Improv, works
 > as a Home Assistant Bluetooth proxy and updates itself over the air. It needs
 > Social Home with the wall panel API (display API v1).
 

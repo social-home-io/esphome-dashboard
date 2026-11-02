@@ -75,6 +75,9 @@ struct Settings {
   /// The admin lets Home Assistant lift the privacy lock without the PIN
   /// (POST /unlock/ha). Absent (older servers): off.
   bool ha_unlock{false};
+  /// The photo screensaver starts after this many minutes without a touch
+  /// (GET /frame); 0 while it is off (null, or absent on older servers).
+  int photo_frame_minutes{0};
 };
 
 struct Rail {
@@ -545,6 +548,25 @@ struct Picture {
 enum class BoardKind : uint8_t { NONE, OVERVIEW, MESSAGES, NOTES, MAP, PERSON };
 
 /// One parsed board answer. Only the section matching `kind` is filled.
+/// One photo of the screensaver (GET /frame).
+struct FramePhoto {
+  std::string id;
+  std::string url;  ///< /api/display/v1/photo/{id}.png; add ?w=&h=
+  int width{0};     ///< fitted into the round's image size
+  int height{0};
+  std::string date;   ///< the day taken, in the wall's language
+  std::string album;  ///< its album, in the wall's language
+};
+
+/// The photo screensaver's round: how long each photo stays, the crossfade.
+struct FrameRound {
+  int interval_s{20};
+  int fade_ms{2000};
+  int width{1280};  ///< the size each url is fitted into by default
+  int height{800};
+  std::vector<FramePhoto> photos;
+};
+
 struct Board {
   BoardKind kind{BoardKind::NONE};
   Header header;
