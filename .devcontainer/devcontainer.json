@@ -10,7 +10,6 @@
 		},
 		"ghcr.io/devcontainers/features/github-cli:1": {},
 		"ghcr.io/jsburckhardt/devcontainer-features/uv:1": {},
-		"ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
 		// cmake + build-essential: host C++ tests (tests/cpp).
 		// libsdl2-dev + libssl-dev + libmbedtls-dev: the host SDL panel
 		// (builds/host-sdl.yaml), same packages as the CI host-sdl job.
@@ -21,7 +20,8 @@
 		}
 	},
 
-	// venv + pinned ESPHome + yamllint, host test configure.
+	// venv + pinned ESPHome + yamllint, host test configure, Claude Code
+	// (user mode, in ~/.local/bin).
 	"postCreateCommand": ".devcontainer/post-create.sh",
 	// Xvfb on :99 on every container start.
 	"postStartCommand": ".devcontainer/post-start.sh",
@@ -35,6 +35,10 @@
 		"DISPLAY": ":99",
 		"PUPPETEER_EXECUTABLE_PATH": "/usr/bin/chromium",
 		"CHROME_PATH": "/usr/bin/chromium"
+	},
+	// Claude Code lives in the remote user's ~/.local/bin (post-create.sh).
+	"remoteEnv": {
+		"PATH": "${containerEnv:PATH}:/home/vscode/.local/bin"
 	},
 
 	// 6052 = `esphome dashboard .` (optional, for browsing configs/logs).
@@ -53,7 +57,8 @@
 				"redhat.vscode-yaml",
 				"ms-vscode.cmake-tools",
 				"ms-vscode.cpptools",
-				"ms-python.python"
+				"ms-python.python",
+				"anthropic.claude-code"
 			],
 			"settings": {
 				"python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",

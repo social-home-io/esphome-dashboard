@@ -31,6 +31,17 @@ uv pip install --refresh -r .github/esphome-requirements.txt yamllint
 # --test-dir build/tests` from then on.
 cmake -S tests/cpp -B build/tests -DCMAKE_BUILD_TYPE=Debug >/dev/null
 
+# Claude Code for this user (not root) with Anthropic's native installer
+# (https://code.claude.com/docs/en/setup): ~/.local/bin, auto-updates
+# without sudo. The installer leaves rc files alone, so add ~/.local/bin to
+# PATH for bash and zsh (VS Code terminals get it from remoteEnv); the grep
+# guard keeps a re-run from adding it twice.
+curl -fsSL https://claude.ai/install.sh | bash
+for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+	grep -qsF 'export PATH="$HOME/.local/bin:$PATH"' "$rc" ||
+		echo 'export PATH="$HOME/.local/bin:$PATH"' >>"$rc"
+done
+
 echo "ESPHome ${ESPHOME_VERSION} ready in .venv — try:"
 echo "  .venv/bin/esphome compile builds/host-sdl.yaml   # the panel UI in an SDL window"
 echo "  .venv/bin/esphome compile builds/guition-jc8012p4a1.factory.yaml"
